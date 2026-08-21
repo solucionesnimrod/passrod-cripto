@@ -1,0 +1,7 @@
+# artefactos de compilacion
+java/*.class
+java/com/
+java/Puente.java
+typescript/puente.mjs
+__pycache__/
+*.pyc

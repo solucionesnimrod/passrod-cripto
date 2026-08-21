@@ -1,0 +1,104 @@
+{
+  "_descripcion": "Banco de vectores del esquema criptografico de PassRod v2. Cada implementacion (TypeScript, Java, Kotlin) debe reproducir EXACTAMENTE estos valores. La referencia es generar_vectores.py.",
+  "version_esquema": 2,
+  "parametros": {
+    "argon2id": {
+      "m": 65536,
+      "t": 3,
+      "p": 4,
+      "len": 32
+    },
+    "pbkdf2_iteraciones": 600000,
+    "info_enc": "passrod.v2.enc",
+    "info_auth": "passrod.v2.auth",
+    "info_recovery": "passrod.v2.recovery",
+    "prefijo_salt": "passrod.v2|",
+    "prefijo_aad": "passrod.v2|",
+    "alg_aes_gcm": 1
+  },
+  "entradas": {
+    "password": "Contraseña-Maestra-2026!",
+    "email": "  Ana.Perez@Ejemplo.EC  ",
+    "email_normalizado": "ana.perez@ejemplo.ec",
+    "nonce_hex": "000102030405060708090a0b",
+    "clave_boveda_hex": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+    "codigo_recuperacion": "JBSWY3DPEHPK3PXPJBSWY3DPEH"
+  },
+  "casos": [
+    {
+      "nombre": "salt_desde_email",
+      "esperado": "DAfpshzhLLmmLlgUx+/oBQMpe6Hs0o8azjYMfBIXO34=",
+      "nota": "SHA-256('passrod.v2|' + email en minusculas y sin espacios)"
+    },
+    {
+      "nombre": "mk_argon2id",
+      "esperado": "LcXtRltKl8qw3hx6E8743woneFNQ6BT3Nl0RcMxI4uY=",
+      "nota": "clave maestra derivada con argon2id"
+    },
+    {
+      "nombre": "sk_argon2id",
+      "esperado": "yb4+Dag+UsLt696yMWMBzlDHmiCOpr83Z2WDhuYYejQ=",
+      "nota": "HKDF con info passrod.v2.enc"
+    },
+    {
+      "nombre": "authkey_argon2id",
+      "esperado": "6Ml5pwxK9TswZPMo6bI3HayaACwmOu6Su3f3yqTCW+w=",
+      "nota": "HKDF con info passrod.v2.auth"
+    },
+    {
+      "nombre": "mk_pbkdf2",
+      "esperado": "ar+hiF+2nSvsDuPK0G6f0wSdtI8ZCSComiQOcAi3Nc4=",
+      "nota": "clave maestra derivada con pbkdf2"
+    },
+    {
+      "nombre": "sk_pbkdf2",
+      "esperado": "CkwqG5FxPyuFosDnnYZXRpJg8OiSAFzWadUMmZKY+Ys=",
+      "nota": "HKDF con info passrod.v2.enc"
+    },
+    {
+      "nombre": "authkey_pbkdf2",
+      "esperado": "Vzt1CAeU5Zqf6e0t71Fbz6EJk+RdCylnTR2ya3gnWio=",
+      "nota": "HKDF con info passrod.v2.auth"
+    },
+    {
+      "nombre": "aad_credencial",
+      "esperado": "cGFzc3JvZC52MnxjcmVkZW5jaWFsfDQyfDc=",
+      "nota": "passrod.v2|credencial|42|7"
+    },
+    {
+      "nombre": "credencial_json_utf8_b64",
+      "esperado": "eyJub21icmUiOiJCYW5jbyBQaWNoaW5jaGEiLCJ1c3VhcmlvIjoiYW5hLnBlcmV6IiwiY2xhdmUiOiJTM2NyM3RAMjAyNiIsInVybCI6Imh0dHBzOi8vYmFuY28uZXhhbXBsZS5lYyIsIm5vdGFzIjoiY3VlbnRhIGRlIGFob3Jyb3Mg4oCUIMOxYW5kw7oifQ==",
+      "nota": "el JSON exacto que se cifra, para descartar diferencias de serializacion"
+    },
+    {
+      "nombre": "blob_credencial",
+      "esperado": "AgEAAQIDBAUGBwgJCgv954Pq5YYpSG+n3h9yOEubdiaLFpSBrCzQUrAtdBYAS9aFv7aYb2OmRjJpwpdvzDUwrCgOTEH5GbLMq0FG9Hn8SbD2Tt6pOO4DcBN/dSuRjijsI7qdgDTpqWH4/FwUaoPron58Prpy8VNt3dbYoIA1rpbXAhVw9apCm0nHzQcvPw9kj7uEjzQ7NrZs4o5xfprsDWDDW43wbqlKizsKfE1JEg==",
+      "nota": "AES-256-GCM con la clave de boveda; formato VER|ALG|NONCE|CT+TAG"
+    },
+    {
+      "nombre": "aad_clave_boveda",
+      "esperado": "cGFzc3JvZC52MnxjbGF2ZV9ib3ZlZGF8N3w3",
+      "nota": "passrod.v2|clave_boveda|7|7"
+    },
+    {
+      "nombre": "wrap_clave_boveda",
+      "esperado": "AgEAAQIDBAUGBwgJCgsy24Vs95eaJTzlWSO+vJFMvYmTb/PNvYSy2i2KeiaLec9iNF+l49dMQ4GvtstNePg=",
+      "nota": "la clave de boveda envuelta con SK; esto es lo que guarda el servidor"
+    },
+    {
+      "nombre": "recovery_key",
+      "esperado": "dA/UABmrPT6h/GMjKO/7YkAjf+L4pr8GmCHWcaxa5uY=",
+      "nota": "HKDF del codigo de recuperacion"
+    },
+    {
+      "nombre": "recovery_blob",
+      "esperado": "AgEAAQIDBAUGBwgJCguX16ZPY8Xxfmf4HxYq1THuF7nxHSxMWSwHlPMYqTE9DgBsJAydsYDRrDr0kY94CC0=",
+      "nota": "MK envuelta con la clave de recuperacion"
+    },
+    {
+      "nombre": "aad_incorrecta_debe_fallar",
+      "esperado": "falla como debe",
+      "nota": "descifrar el mismo blob con id_recurso 43 en vez de 42 debe fallar"
+    }
+  ]
+}

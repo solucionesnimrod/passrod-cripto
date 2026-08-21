@@ -1,0 +1,216 @@
+/**
+ * Núcleo criptográfico de PassRod v2 — implementación para navegador y Node.
+ *
+ * Debe reproducir byte a byte los valores de `vectores/vectores.json`. Si esta
+ * implementación diverge de la de Java o Kotlin, una bóveda cifrada en un
+ * cliente no se abrirá en otro; por eso los vectores se ejecutan en CI.
+ *
+ * Todo el material sensible se deriva y se usa aquí, en el cliente. El servidor
+ * solo recibe `auth_hash` y blobs opacos.
+ */
+
+const cripto: Crypto =
+  typeof globalThis.crypto !== 'undefined' && globalThis.crypto.subtle
+    ? globalThis.crypto
+    : // eslint-disable-next-line @typescript-eslint/no-var-requires
+      (require('crypto').webcrypto as Crypto);
+
+// ── Parámetros del esquema (§2) ─────────────────────────────────────────────
+export const VERSION_ESQUEMA = 2;
+export const ALG_AES_GCM = 0x01;
+export const PBKDF2_ITERACIONES = 600_000;
+
+const PREFIJO_SALT = 'passrod.v2|';
+const PREFIJO_AAD = 'passrod.v2|';
+const INFO_ENC = 'passrod.v2.enc';
+const INFO_AUTH = 'passrod.v2.auth';
+const INFO_RECOVERY = 'passrod.v2.recovery';
+
+const utf8 = new TextEncoder();
+
+// ── Utilidades ──────────────────────────────────────────────────────────────
+
+export function aBase64(datos: Uint8Array): string {
+  let s = '';
+  for (const b of datos) s += String.fromCharCode(b);
+  return btoaSeguro(s);
+}
+
+export function deBase64(texto: string): Uint8Array {
+  const s = atobSeguro(texto);
+  const salida = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) salida[i] = s.charCodeAt(i);
+  return salida;
+}
+
+function btoaSeguro(s: string): string {
+  return typeof btoa === 'function'
+    ? btoa(s)
+    : Buffer.from(s, 'binary').toString('base64');
+}
+
+function atobSeguro(s: string): string {
+  return typeof atob === 'function'
+    ? atob(s)
+    : Buffer.from(s, 'base64').toString('binary');
+}
+
+/** Borra un buffer con material sensible. No es infalible en JS, pero acorta
+ *  la ventana en que la clave sigue en memoria. */
+export function limpiar(...buffers: Uint8Array[]): void {
+  for (const b of buffers) b.fill(0);
+}
+
+// ── Derivación ──────────────────────────────────────────────────────────────
+
+/**
+ * Salt determinista a partir del correo.
+ *
+ * Se deriva del correo y no de un aleatorio del servidor para que el cliente
+ * pueda calcular la clave maestra ANTES de la primera petición: así la
+ * contraseña nunca necesita viajar ni esperar a nadie.
+ */
+export async function saltDesdeEmail(email: string): Promise<Uint8Array> {
+  const normalizado = email.trim().toLowerCase();
+  const h = await cripto.subtle.digest('SHA-256', utf8.encode(PREFIJO_SALT + normalizado));
+  return new Uint8Array(h);
+}
+
+/**
+ * Clave maestra con PBKDF2-SHA256.
+ *
+ * Es el algoritmo por defecto porque WebCrypto lo trae nativo, igual que Java y
+ * Android. Argon2id resiste mejor el ataque por hardware dedicado, pero en el
+ * navegador exige WASM; el campo `kdf_tipo` del usuario existe precisamente
+ * para poder cambiarlo sin romper a quien ya está registrado.
+ */
+export async function derivarMK(password: string, email: string): Promise<Uint8Array> {
+  const salt = await saltDesdeEmail(email);
+  const base = await cripto.subtle.importKey(
+    'raw', utf8.encode(password), { name: 'PBKDF2' }, false, ['deriveBits']);
+  const bits = await cripto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERACIONES, hash: 'SHA-256' },
+    base, 256);
+  return new Uint8Array(bits);
+}
+
+/** HKDF-SHA256 con salt vacío (RFC 5869). */
+export async function hkdf(ikm: Uint8Array, info: string, largo = 32): Promise<Uint8Array> {
+  const base = await cripto.subtle.importKey('raw', ikm, { name: 'HKDF' }, false, ['deriveBits']);
+  const bits = await cripto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode(info) },
+    base, largo * 8);
+  return new Uint8Array(bits);
+}
+
+/** Clave de cifrado: nunca sale del cliente. */
+export const derivarSK = (mk: Uint8Array) => hkdf(mk, INFO_ENC);
+
+/** Clave de autenticación: su base64 es lo ÚNICO que se envía al servidor. */
+export const derivarAuthKey = (mk: Uint8Array) => hkdf(mk, INFO_AUTH);
+
+export async function authHash(password: string, email: string): Promise<string> {
+  const mk = await derivarMK(password, email);
+  const ak = await derivarAuthKey(mk);
+  const salida = aBase64(ak);
+  limpiar(mk, ak);
+  return salida;
+}
+
+// ── Formato de blob ─────────────────────────────────────────────────────────
+
+/**
+ * Datos autenticados asociados: atan el blob a su ubicación exacta.
+ *
+ * Sin esto, alguien con acceso de escritura a la base podría mover el
+ * ciphertext de una credencial a otra fila, o de una bóveda a otra, y el
+ * descifrado seguiría funcionando.
+ */
+export function construirAAD(tipo: string, idRecurso: string | number,
+                             idBoveda: string | number): Uint8Array {
+  return utf8.encode(`${PREFIJO_AAD}${tipo}|${idRecurso}|${idBoveda}`);
+}
+
+/** base64( VER(1) ‖ ALG(1) ‖ NONCE(12) ‖ CIPHERTEXT‖TAG(16) ) */
+export async function cifrar(clave: Uint8Array, plano: Uint8Array,
+                             aad: Uint8Array, nonce?: Uint8Array): Promise<string> {
+  const iv = nonce ?? cripto.getRandomValues(new Uint8Array(12));
+  if (iv.length !== 12) throw new Error('El nonce debe ser de 12 bytes');
+
+  const k = await cripto.subtle.importKey('raw', clave, { name: 'AES-GCM' }, false, ['encrypt']);
+  const ct = new Uint8Array(
+    await cripto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad, tagLength: 128 }, k, plano));
+
+  const salida = new Uint8Array(2 + iv.length + ct.length);
+  salida[0] = VERSION_ESQUEMA;
+  salida[1] = ALG_AES_GCM;
+  salida.set(iv, 2);
+  salida.set(ct, 2 + iv.length);
+  return aBase64(salida);
+}
+
+export async function descifrar(clave: Uint8Array, blob: string,
+                                aad: Uint8Array): Promise<Uint8Array> {
+  const crudo = deBase64(blob);
+  if (crudo.length < 2 + 12 + 16) throw new Error('Blob demasiado corto');
+
+  const version = crudo[0];
+  const alg = crudo[1];
+  // El byte de versión permite cambiar de algoritmo en el futuro sin migrar
+  // toda la base de golpe: cada blob dice cómo fue cifrado.
+  if (version !== VERSION_ESQUEMA) throw new Error(`Versión de blob no soportada: ${version}`);
+  if (alg !== ALG_AES_GCM) throw new Error(`Algoritmo no soportado: ${alg}`);
+
+  const iv = crudo.slice(2, 14);
+  const ct = crudo.slice(14);
+  const k = await cripto.subtle.importKey('raw', clave, { name: 'AES-GCM' }, false, ['decrypt']);
+  const plano = await cripto.subtle.decrypt(
+    { name: 'AES-GCM', iv, additionalData: aad, tagLength: 128 }, k, ct);
+  return new Uint8Array(plano);
+}
+
+// ── Objetos de dominio ──────────────────────────────────────────────────────
+
+export const cifrarCredencial = (vk: Uint8Array, credencial: unknown,
+                                 idCredencial: string | number, idBoveda: string | number,
+                                 nonce?: Uint8Array) =>
+  cifrar(vk, utf8.encode(JSON.stringify(credencial)),
+         construirAAD('credencial', idCredencial, idBoveda), nonce);
+
+export async function descifrarCredencial<T>(vk: Uint8Array, blob: string,
+                                             idCredencial: string | number,
+                                             idBoveda: string | number): Promise<T> {
+  const plano = await descifrar(vk, blob, construirAAD('credencial', idCredencial, idBoveda));
+  return JSON.parse(new TextDecoder().decode(plano)) as T;
+}
+
+/** Clave de bóveda nueva. Aleatoria de verdad: nunca derivarla de nada. */
+export const nuevaClaveBoveda = () => cripto.getRandomValues(new Uint8Array(32));
+
+export const envolverClaveBoveda = (sk: Uint8Array, vk: Uint8Array,
+                                    idBoveda: string | number, nonce?: Uint8Array) =>
+  cifrar(sk, vk, construirAAD('clave_boveda', idBoveda, idBoveda), nonce);
+
+export const abrirClaveBoveda = (sk: Uint8Array, envuelta: string,
+                                 idBoveda: string | number) =>
+  descifrar(sk, envuelta, construirAAD('clave_boveda', idBoveda, idBoveda));
+
+// ── Recuperación ────────────────────────────────────────────────────────────
+
+export const claveDeRecuperacion = (codigo: string) =>
+  hkdf(utf8.encode(codigo), INFO_RECOVERY);
+
+export async function envolverParaRecuperacion(codigo: string, mk: Uint8Array,
+                                               nonce?: Uint8Array): Promise<string> {
+  const rk = await claveDeRecuperacion(codigo);
+  const blob = await cifrar(rk, mk, construirAAD('recovery', 0, 0), nonce);
+  limpiar(rk);
+  return blob;
+}
+
+export async function recuperarMK(codigo: string, blob: string): Promise<Uint8Array> {
+  const rk = await claveDeRecuperacion(codigo);
+  const mk = await descifrar(rk, blob, construirAAD('recovery', 0, 0));
+  limpiar(rk);
+  return mk;
+}
