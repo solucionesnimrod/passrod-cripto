@@ -114,6 +114,32 @@ resultados.push({
   obtenido: '(contenido recuperado)', esperado: '(igual al original)',
 });
 
+// ── RSA: compartir bóvedas ─────────────────────────────────────────────────
+const aadPriv = construirAAD('clave_privada', 0, 0);
+comprobar('aad_clave_privada', b64(aadPriv));
+const privPkcs8 = deB64(E.rsa_privada_pkcs8_b64);
+comprobar('priv_envuelta', await cifrar(sk, privPkcs8, aadPriv, nonce));
+
+// El ciphertext RSA no se compara byte a byte: OAEP usa relleno aleatorio.
+// Se comprueba DESCIFRANDO el que dejó la referencia.
+const rsaOaep = { name: 'RSA-OAEP', hash: 'SHA-256' };
+const privKey = await cripto.subtle.importKey('pkcs8', privPkcs8, rsaOaep, false, ['decrypt']);
+const vkAbierta = new Uint8Array(await cripto.subtle.decrypt(
+  { name: 'RSA-OAEP' }, privKey, deB64(E.wrap_asimetrico_b64)));
+comprobar('abrir_wrap_asimetrico', b64(vkAbierta));
+
+// ida y vuelta con la pública
+const pubKey = await cripto.subtle.importKey('spki', deB64(E.rsa_publica_spki_b64),
+  rsaOaep, false, ['encrypt']);
+const miEnvuelta = new Uint8Array(await cripto.subtle.encrypt({ name: 'RSA-OAEP' }, pubKey, vk));
+const deVuelta = new Uint8Array(await cripto.subtle.decrypt(
+  { name: 'RSA-OAEP' }, privKey, miEnvuelta));
+resultados.push({
+  nombre: 'rsa_ida_y_vuelta',
+  ok: Buffer.compare(Buffer.from(deVuelta), Buffer.from(vk)) === 0,
+  obtenido: '(clave recuperada)', esperado: '(igual a la original)',
+});
+
 // la AAD debe atar el blob a su ubicación
 let atado = false;
 try {

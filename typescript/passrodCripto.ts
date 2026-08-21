@@ -195,6 +195,61 @@ export const abrirClaveBoveda = (sk: Uint8Array, envuelta: string,
                                  idBoveda: string | number) =>
   descifrar(sk, envuelta, construirAAD('clave_boveda', idBoveda, idBoveda));
 
+// ── Compartir bóvedas: RSA-2048-OAEP-SHA256 (§2.2 y §2.3) ──────────────────
+//
+// Se eligió RSA y no X25519 porque WebCrypto, Java y Android lo traen de serie;
+// X25519 en WebCrypto es reciente y de disponibilidad desigual.
+//
+// El relleno de OAEP es aleatorio: dos envolturas de la misma clave dan
+// ciphertexts distintos. Es correcto, pero significa que no se pueden comparar
+// byte a byte entre implementaciones — se comparan descifrando.
+
+const RSA_OAEP = { name: 'RSA-OAEP', hash: 'SHA-256' } as const;
+
+export interface ParDeClaves {
+  publicaSpki: Uint8Array;   // va al servidor en claro: es pública
+  privadaPkcs8: Uint8Array;  // va al servidor ENVUELTA con SK
+}
+
+/** Par de claves del usuario. Se genera una vez, en el registro. */
+export async function generarParDeClaves(): Promise<ParDeClaves> {
+  const par = await cripto.subtle.generateKey(
+    { ...RSA_OAEP, modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]) },
+    true, ['encrypt', 'decrypt']) as CryptoKeyPair;
+  return {
+    publicaSpki: new Uint8Array(await cripto.subtle.exportKey('spki', par.publicKey)),
+    privadaPkcs8: new Uint8Array(await cripto.subtle.exportKey('pkcs8', par.privateKey)),
+  };
+}
+
+/**
+ * Envuelve la clave de bóveda para otro usuario, usando su clave pública.
+ *
+ * Esto es lo que permite compartir sin que el servidor participe: el dueño
+ * cifra VK para el invitado y el servidor solo transporta el resultado.
+ */
+export async function envolverParaUsuario(publicaSpki: Uint8Array,
+                                          vk: Uint8Array): Promise<string> {
+  const pub = await cripto.subtle.importKey('spki', publicaSpki, RSA_OAEP, false, ['encrypt']);
+  return aBase64(new Uint8Array(await cripto.subtle.encrypt({ name: 'RSA-OAEP' }, pub, vk)));
+}
+
+/** Abre una clave de bóveda que envolvieron para mí. */
+export async function abrirConPrivada(privadaPkcs8: Uint8Array,
+                                      envuelta: string): Promise<Uint8Array> {
+  const priv = await cripto.subtle.importKey('pkcs8', privadaPkcs8, RSA_OAEP, false, ['decrypt']);
+  return new Uint8Array(
+    await cripto.subtle.decrypt({ name: 'RSA-OAEP' }, priv, deBase64(envuelta)));
+}
+
+/** La privada nunca llega al servidor sin envolver. */
+export const envolverClavePrivada = (sk: Uint8Array, privadaPkcs8: Uint8Array,
+                                     nonce?: Uint8Array) =>
+  cifrar(sk, privadaPkcs8, construirAAD('clave_privada', 0, 0), nonce);
+
+export const abrirClavePrivada = (sk: Uint8Array, envuelta: string) =>
+  descifrar(sk, envuelta, construirAAD('clave_privada', 0, 0));
+
 // ── Recuperación ────────────────────────────────────────────────────────────
 
 export const claveDeRecuperacion = (codigo: string) =>

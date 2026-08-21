@@ -2,6 +2,9 @@
 java/*.class
 java/com/
 java/Puente.java
+java/PuenteRsa.java
+java/AbrirRsa.java
 typescript/puente.mjs
+typescript/puenteRsa.mjs
 __pycache__/
 *.pyc

@@ -19,6 +19,8 @@ import json
 import os
 
 from argon2.low_level import Type, hash_secret_raw
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 VERSION_ESQUEMA = 2
@@ -86,6 +88,34 @@ def aad_de(tipo: str, id_recurso, id_boveda) -> bytes:
 def cifrar(clave: bytes, plano: bytes, aad: bytes, nonce: bytes) -> str:
     cuerpo = AESGCM(clave).encrypt(nonce, plano, aad)
     return b64(bytes([VERSION_ESQUEMA, ALG_AES_GCM]) + nonce + cuerpo)
+
+
+# ── Compartir bovedas: RSA-2048-OAEP-SHA256 (§2.2 y §2.3) ──────────────────
+#
+# Se elige RSA y no X25519 porque WebCrypto, Java y Android lo traen de serie:
+# X25519 en WebCrypto es reciente y de disponibilidad desigual.
+#
+# OJO: el relleno de OAEP es ALEATORIO, asi que el ciphertext NO es
+# determinista y no se puede comparar byte a byte entre implementaciones. Por
+# eso los vectores de RSA van en direccion de DESCIFRADO: se fija un par de
+# claves y un ciphertext conocidos, y cada implementacion debe abrirlo y
+# obtener el mismo resultado.
+
+OAEP = padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(), label=None)
+
+
+def envolver_asimetrico(pub, vk: bytes) -> bytes:
+    """Envuelve la clave de boveda con la clave publica del invitado.
+
+    Es lo que permite compartir sin que el servidor participe: el duenyo cifra
+    VK para el invitado y el servidor solo transporta el resultado.
+    """
+    return pub.encrypt(vk, OAEP)
+
+
+def abrir_asimetrico(priv, envuelta: bytes) -> bytes:
+    return priv.decrypt(envuelta, OAEP)
 
 
 def descifrar(clave: bytes, blob: str, aad: bytes) -> bytes:
@@ -184,6 +214,39 @@ def construir():
     caso("recovery_blob", cifrar(rk, mk_pbkdf2, aad_rec, nonce),
          "MK envuelta con la clave de recuperacion")
 
+    # ── Compartir bovedas ───────────────────────────────────────────────────
+    # Par de claves FIJO, generado una vez y guardado aqui. Es material de
+    # PRUEBA y no debe usarse jamas en produccion, donde cada usuario genera el
+    # suyo en el registro y nunca sale de su equipo sin envolver.
+    priv = cargar_o_crear_par()
+    pub = priv.public_key()
+
+    pub_spki = pub.public_bytes(serialization.Encoding.DER,
+                                serialization.PublicFormat.SubjectPublicKeyInfo)
+    priv_pkcs8 = priv.private_bytes(serialization.Encoding.DER,
+                                    serialization.PrivateFormat.PKCS8,
+                                    serialization.NoEncryption())
+
+    vectores["entradas"]["rsa_publica_spki_b64"] = b64(pub_spki)
+    vectores["entradas"]["rsa_privada_pkcs8_b64"] = b64(priv_pkcs8)
+    vectores["entradas"]["_aviso_rsa"] = (
+        "Par de claves de PRUEBA. Sirve para verificar implementaciones; nunca "
+        "debe usarse en produccion.")
+
+    # La clave privada viaja al servidor ENVUELTA con SK: el servidor la guarda
+    # pero no puede abrirla.
+    aad_priv = aad_de("clave_privada", 0, 0)
+    caso("aad_clave_privada", b64(aad_priv), "passrod.v2|clave_privada|0|0")
+    caso("priv_envuelta", cifrar(sk, priv_pkcs8, aad_priv, nonce),
+         "la clave privada RSA envuelta con SK; esto es lo que guarda el servidor")
+
+    # Ciphertext RSA fijo para que las otras implementaciones lo DESCIFREN.
+    # No se compara el cifrado porque OAEP usa relleno aleatorio.
+    envuelta = envolver_asimetrico(pub, vk)
+    vectores["entradas"]["wrap_asimetrico_b64"] = b64(envuelta)
+    caso("abrir_wrap_asimetrico", b64(vk),
+         "descifrar entradas.wrap_asimetrico_b64 con la privada debe dar la clave de boveda")
+
     # comprobacion negativa: una AAD distinta debe hacer fallar el descifrado
     try:
         descifrar(vk, blob_cred, aad_de("credencial", 43, 7))
@@ -194,6 +257,26 @@ def construir():
          "descifrar el mismo blob con id_recurso 43 en vez de 42 debe fallar")
 
     return vectores
+
+
+def cargar_o_crear_par():
+    """Par RSA estable entre ejecuciones.
+
+    Si se generara uno nuevo cada vez, los vectores cambiarian en cada
+    ejecucion y dejarian de servir para comparar implementaciones.
+    """
+    ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), "par_rsa_pruebas.pem")
+    if os.path.exists(ruta):
+        with open(ruta, "rb") as f:
+            return serialization.load_pem_private_key(f.read(), password=None)
+
+    priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    with open(ruta, "wb") as f:
+        f.write(priv.private_bytes(serialization.Encoding.PEM,
+                                   serialization.PrivateFormat.PKCS8,
+                                   serialization.NoEncryption()))
+    print(f"par RSA de pruebas creado en {ruta}")
+    return priv
 
 
 if __name__ == "__main__":

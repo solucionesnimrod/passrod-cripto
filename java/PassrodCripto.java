@@ -213,6 +213,71 @@ public final class PassrodCripto {
         return descifrar(sk, envuelta, construirAAD("clave_boveda", idBoveda, idBoveda));
     }
 
+    // ── Compartir bóvedas: RSA-2048-OAEP-SHA256 (§2.2 y §2.3) ───────────────
+    //
+    // Se eligió RSA y no X25519 porque WebCrypto, Java y Android lo traen de
+    // serie; X25519 en WebCrypto es reciente y de disponibilidad desigual.
+    //
+    // El relleno de OAEP es aleatorio: dos envolturas de la misma clave dan
+    // ciphertexts distintos. Por eso no se comparan byte a byte entre
+    // implementaciones, sino descifrando.
+
+    /** Nombre completo: sin él, Java usa SHA-1 en MGF1 y no interopera con WebCrypto. */
+    private static final String RSA_OAEP = "RSA/ECB/OAEPWithSHA-256AndMGF1Padding";
+
+    public static java.security.KeyPair generarParDeClaves() throws Exception {
+        java.security.KeyPairGenerator g = java.security.KeyPairGenerator.getInstance("RSA");
+        g.initialize(2048, AZAR);
+        return g.generateKeyPair();
+    }
+
+    /**
+     * Envuelve la clave de bóveda para otro usuario, con su clave pública.
+     *
+     * Es lo que permite compartir sin que el servidor participe: el dueño cifra
+     * VK para el invitado y el servidor solo transporta el resultado.
+     */
+    public static String envolverParaUsuario(byte[] publicaSpki, byte[] vk) throws Exception {
+        java.security.PublicKey pub = java.security.KeyFactory.getInstance("RSA")
+                .generatePublic(new java.security.spec.X509EncodedKeySpec(publicaSpki));
+        Cipher c = Cipher.getInstance(RSA_OAEP);
+        c.init(Cipher.ENCRYPT_MODE, pub, parametrosOaep());
+        return Base64.getEncoder().encodeToString(c.doFinal(vk));
+    }
+
+    /** Abre una clave de bóveda que envolvieron para mí. */
+    public static byte[] abrirConPrivada(byte[] privadaPkcs8, String envuelta) throws Exception {
+        java.security.PrivateKey priv = java.security.KeyFactory.getInstance("RSA")
+                .generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(privadaPkcs8));
+        Cipher c = Cipher.getInstance(RSA_OAEP);
+        c.init(Cipher.DECRYPT_MODE, priv, parametrosOaep());
+        return c.doFinal(Base64.getDecoder().decode(envuelta));
+    }
+
+    /**
+     * SHA-256 también en la función generadora de máscara.
+     *
+     * Java, con el nombre de algoritmo a secas, usa SHA-256 para el hash pero
+     * deja SHA-1 en MGF1. WebCrypto usa SHA-256 en ambos, así que sin esto un
+     * mensaje cifrado en el navegador no se abre en el escritorio.
+     */
+    private static javax.crypto.spec.OAEPParameterSpec parametrosOaep() {
+        return new javax.crypto.spec.OAEPParameterSpec(
+                "SHA-256", "MGF1",
+                java.security.spec.MGF1ParameterSpec.SHA256,
+                javax.crypto.spec.PSource.PSpecified.DEFAULT);
+    }
+
+    /** La privada nunca llega al servidor sin envolver. */
+    public static String envolverClavePrivada(byte[] sk, byte[] privadaPkcs8, byte[] nonce)
+            throws Exception {
+        return cifrar(sk, privadaPkcs8, construirAAD("clave_privada", 0, 0), nonce);
+    }
+
+    public static byte[] abrirClavePrivada(byte[] sk, String envuelta) throws Exception {
+        return descifrar(sk, envuelta, construirAAD("clave_privada", 0, 0));
+    }
+
     // ── Recuperación ────────────────────────────────────────────────────────
 
     public static byte[] claveDeRecuperacion(String codigo) throws Exception {

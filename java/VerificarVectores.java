@@ -74,6 +74,25 @@ public class VerificarVectores {
         anotar("descifrar_credencial_del_banco",
                java.util.Arrays.equals(vuelta, contenido), "(recuperado)", "(igual)");
 
+        // ── RSA: compartir bóvedas ──────────────────────────────────────
+        byte[] aadPriv = PassrodCripto.construirAAD("clave_privada", 0, 0);
+        comprobar("aad_clave_privada", B64.encodeToString(aadPriv));
+        byte[] privPkcs8 = DEB64.decode(entradas.get("rsa_privada_pkcs8_b64"));
+        comprobar("priv_envuelta", PassrodCripto.cifrar(sk, privPkcs8, aadPriv, nonce));
+
+        // El ciphertext RSA no se compara byte a byte: OAEP usa relleno
+        // aleatorio. Se comprueba DESCIFRANDO el que dejó la referencia.
+        byte[] vkAbierta = PassrodCripto.abrirConPrivada(
+                privPkcs8, entradas.get("wrap_asimetrico_b64"));
+        comprobar("abrir_wrap_asimetrico", B64.encodeToString(vkAbierta));
+
+        // ida y vuelta con la pública
+        String miEnvuelta = PassrodCripto.envolverParaUsuario(
+                DEB64.decode(entradas.get("rsa_publica_spki_b64")), vk);
+        byte[] deVuelta = PassrodCripto.abrirConPrivada(privPkcs8, miEnvuelta);
+        anotar("rsa_ida_y_vuelta", java.util.Arrays.equals(deVuelta, vk),
+               "(clave recuperada)", "(igual a la original)");
+
         // la AAD debe atar el blob a su ubicación
         boolean atado = false;
         try {
@@ -142,7 +161,9 @@ public class VerificarVectores {
         int fin = json.indexOf("\"casos\"");
         String bloque = json.substring(ini, fin);
         for (String clave : new String[]{"password", "email", "email_normalizado",
-                                         "nonce_hex", "clave_boveda_hex", "codigo_recuperacion"}) {
+                                         "nonce_hex", "clave_boveda_hex", "codigo_recuperacion",
+                                         "rsa_publica_spki_b64", "rsa_privada_pkcs8_b64",
+                                         "wrap_asimetrico_b64"}) {
             int p = bloque.indexOf("\"" + clave + "\"");
             if (p >= 0) entradas.put(clave, valorTras(bloque, p));
         }

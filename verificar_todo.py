@@ -163,7 +163,101 @@ except Exception:
 print(f"  {'PASA ' if atado else 'FALLA'}  cambiar el id en la AAD rompe el descifrado")
 fallos += (not atado)
 
-for tmp in (os.path.join(AQUI, "java", "Puente.java"),
+# ── 3. Compartir bovedas entre plataformas ─────────────────────────────────
+titulo("3. Compartir boveda: envuelve una plataforma, abre otra")
+
+from generar_vectores import abrir_asimetrico, envolver_asimetrico, cargar_o_crear_par
+from cryptography.hazmat.primitives import serialization as _ser
+
+priv = cargar_o_crear_par()
+pub_spki = priv.public_key().public_bytes(
+    _ser.Encoding.DER, _ser.PublicFormat.SubjectPublicKeyInfo)
+priv_pkcs8 = priv.private_bytes(_ser.Encoding.DER, _ser.PrivateFormat.PKCS8,
+                                _ser.NoEncryption())
+vk_compartida = os.urandom(32)
+
+# Java envuelve para el invitado -> Python abre
+puente_rsa_java = r"""
+import com.solucionesnimrod.passrod.cripto.PassrodCripto;
+import java.util.Base64;
+public class PuenteRsa {
+  public static void main(String[] a) throws Exception {
+    byte[] pub = Base64.getDecoder().decode(a[0]);
+    byte[] vk  = Base64.getDecoder().decode(a[1]);
+    System.out.println("ENVUELTA:" + PassrodCripto.envolverParaUsuario(pub, vk));
+  }
+}
+"""
+with open(os.path.join(AQUI, "java", "PuenteRsa.java"), "w", encoding="utf-8") as f:
+    f.write(puente_rsa_java)
+correr([JAVAC, "-encoding", "UTF-8", "-cp", ".", "-d", ".", "PuenteRsa.java"],
+       os.path.join(AQUI, "java"))
+cod, salida = correr([JAVA, "-cp", ".", "PuenteRsa", b64(pub_spki), b64(vk_compartida)],
+                     os.path.join(AQUI, "java"))
+env_java = next((l[9:].strip() for l in salida.splitlines() if l.startswith("ENVUELTA:")), None)
+try:
+    ok = abrir_asimetrico(priv, base64.b64decode(env_java)) == vk_compartida
+except Exception as e:
+    ok = False
+    print("     error:", e)
+print(f"  {'PASA ' if ok else 'FALLA'}  Python abre la clave que envolvio Java")
+fallos += (not ok)
+
+# TypeScript envuelve -> Python abre
+puente_rsa_ts = r"""
+import { webcrypto as c } from 'node:crypto';
+const [pubB64, vkB64] = process.argv.slice(2);
+const deB64 = (s) => new Uint8Array(Buffer.from(s, 'base64'));
+const pub = await c.subtle.importKey('spki', deB64(pubB64),
+  {name:'RSA-OAEP', hash:'SHA-256'}, false, ['encrypt']);
+const env = new Uint8Array(await c.subtle.encrypt({name:'RSA-OAEP'}, pub, deB64(vkB64)));
+console.log('ENVUELTA:' + Buffer.from(env).toString('base64'));
+"""
+with open(os.path.join(AQUI, "typescript", "puenteRsa.mjs"), "w", encoding="utf-8") as f:
+    f.write(puente_rsa_ts)
+cod, salida = correr(["node", "puenteRsa.mjs", b64(pub_spki), b64(vk_compartida)],
+                     os.path.join(AQUI, "typescript"))
+env_ts = next((l[9:].strip() for l in salida.splitlines() if l.startswith("ENVUELTA:")), None)
+try:
+    ok = abrir_asimetrico(priv, base64.b64decode(env_ts)) == vk_compartida
+except Exception as e:
+    ok = False
+    print("     error:", e)
+print(f"  {'PASA ' if ok else 'FALLA'}  Python abre la clave que envolvio TypeScript")
+fallos += (not ok)
+
+# Python envuelve -> Java abre  (con la privada envuelta con SK, como en produccion)
+env_py = b64(envolver_asimetrico(priv.public_key(), vk_compartida))
+puente_abrir_java = r"""
+import com.solucionesnimrod.passrod.cripto.PassrodCripto;
+import java.util.Base64;
+public class AbrirRsa {
+  public static void main(String[] a) throws Exception {
+    byte[] sk = Base64.getDecoder().decode(a[0]);
+    String privEnvuelta = a[1];
+    String vkEnvuelta = a[2];
+    byte[] priv = PassrodCripto.abrirClavePrivada(sk, privEnvuelta);
+    byte[] vk = PassrodCripto.abrirConPrivada(priv, vkEnvuelta);
+    System.out.println("ABIERTA:" + Base64.getEncoder().encodeToString(vk));
+  }
+}
+"""
+with open(os.path.join(AQUI, "java", "AbrirRsa.java"), "w", encoding="utf-8") as f:
+    f.write(puente_abrir_java)
+correr([JAVAC, "-encoding", "UTF-8", "-cp", ".", "-d", ".", "AbrirRsa.java"],
+       os.path.join(AQUI, "java"))
+priv_envuelta = cifrar(sk, priv_pkcs8, aad_de("clave_privada", 0, 0), os.urandom(12))
+cod, salida = correr([JAVA, "-cp", ".", "AbrirRsa", b64(sk), priv_envuelta, env_py],
+                     os.path.join(AQUI, "java"))
+abierta = next((l[8:].strip() for l in salida.splitlines() if l.startswith("ABIERTA:")), None)
+ok = abierta is not None and base64.b64decode(abierta) == vk_compartida
+print(f"  {'PASA ' if ok else 'FALLA'}  Java abre su clave privada con SK y con ella la boveda compartida")
+fallos += (not ok)
+
+for tmp in (os.path.join(AQUI, "java", "PuenteRsa.java"),
+            os.path.join(AQUI, "java", "AbrirRsa.java"),
+            os.path.join(AQUI, "typescript", "puenteRsa.mjs"),
+            os.path.join(AQUI, "java", "Puente.java"),
             os.path.join(AQUI, "typescript", "puente.mjs")):
     if os.path.exists(tmp):
         os.remove(tmp)
