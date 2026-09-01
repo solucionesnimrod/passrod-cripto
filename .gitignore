@@ -8,3 +8,11 @@ typescript/puente.mjs
 typescript/puenteRsa.mjs
 __pycache__/
 *.pyc
+
+# dependencias
+node_modules/
+
+# dist/ SI se versiona a proposito: la web y la extension consumen este paquete
+# por ruta local (file:../passrod-cripto), no desde un registro npm, y con esa
+# forma de instalar npm no siempre ejecuta el script de compilacion. Versionar
+# el compilado evita que un clon recien hecho se quede sin el modulo.

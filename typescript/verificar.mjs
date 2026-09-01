@@ -1,16 +1,35 @@
 /**
  * Contrasta la implementación TypeScript contra el banco de vectores.
  *
- * Es JavaScript puro (.mjs) a propósito: así se ejecuta con `node verificar.mjs`
- * sin cadena de compilación, y puede correr en CI sin instalar nada.
- * La lógica es la misma que passrodCripto.ts; si se toca una, hay que tocar la otra.
+ *   npm test        (compila el paquete y ejecuta esto)
+ *   node typescript/verificar.mjs
  *
- *   node verificar.mjs
+ * IMPORTANTE: importa el PAQUETE YA COMPILADO (`dist/`), no una copia de la
+ * lógica. Antes reimplementaba aquí saltDesdeEmail, derivarMK, hkdf, cifrar y
+ * descifrar, con un aviso que decía «si se toca una, hay que tocar la otra».
+ * Eso significaba que los vectores validaban ESTE fichero, no el que usan la web
+ * y la extensión: passrodCripto.ts podía romperse y los vectores seguir en verde.
+ *
+ * Lo único que se mantiene aparte es el RSA de las pruebas de compartir, porque
+ * el módulo no expone importación de claves en bruto y aquí hace falta abrir el
+ * par de referencia del banco.
  */
 import { webcrypto as cripto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import {
+  saltDesdeEmail,
+  derivarMK,
+  hkdf,
+  construirAAD,
+  cifrar,
+  descifrar,
+  VERSION_ESQUEMA,
+  ALG_AES_GCM,
+  PBKDF2_ITERACIONES,
+} from '../dist/passrodCripto.js';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const V = JSON.parse(readFileSync(join(AQUI, '..', 'vectores', 'vectores.json'), 'utf8'));
@@ -23,53 +42,19 @@ const deHex = (s) => new Uint8Array(Buffer.from(s, 'hex'));
 const P = V.parametros;
 const E = V.entradas;
 
-async function saltDesdeEmail(email) {
-  const h = await cripto.subtle.digest('SHA-256',
-    utf8.encode(P.prefijo_salt + email.trim().toLowerCase()));
-  return new Uint8Array(h);
+// Las funciones vienen del paquete; aquí solo queda comprobar que los
+// parámetros del banco coinciden con los que el módulo trae compilados, porque
+// si divergen los vectores dejarían de significar nada.
+const desajustes = [];
+if (VERSION_ESQUEMA !== V.version_esquema) desajustes.push('version_esquema');
+if (ALG_AES_GCM !== P.alg_aes_gcm) desajustes.push('alg_aes_gcm');
+if (PBKDF2_ITERACIONES !== P.pbkdf2_iteraciones) desajustes.push('pbkdf2_iteraciones');
+if (desajustes.length) {
+  console.error('El paquete y el banco de vectores no coinciden en: ' + desajustes.join(', '));
+  process.exit(1);
 }
 
-async function derivarMKpbkdf2(password, email) {
-  const salt = await saltDesdeEmail(email);
-  const base = await cripto.subtle.importKey('raw', utf8.encode(password),
-    { name: 'PBKDF2' }, false, ['deriveBits']);
-  const bits = await cripto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: P.pbkdf2_iteraciones, hash: 'SHA-256' }, base, 256);
-  return new Uint8Array(bits);
-}
-
-async function hkdf(ikm, info, largo = 32) {
-  const base = await cripto.subtle.importKey('raw', ikm, { name: 'HKDF' }, false, ['deriveBits']);
-  const bits = await cripto.subtle.deriveBits(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode(info) },
-    base, largo * 8);
-  return new Uint8Array(bits);
-}
-
-const construirAAD = (tipo, idRecurso, idBoveda) =>
-  utf8.encode(`${P.prefijo_aad}${tipo}|${idRecurso}|${idBoveda}`);
-
-async function cifrar(clave, plano, aad, nonce) {
-  const k = await cripto.subtle.importKey('raw', clave, { name: 'AES-GCM' }, false, ['encrypt']);
-  const ct = new Uint8Array(await cripto.subtle.encrypt(
-    { name: 'AES-GCM', iv: nonce, additionalData: aad, tagLength: 128 }, k, plano));
-  const out = new Uint8Array(2 + nonce.length + ct.length);
-  out[0] = V.version_esquema;
-  out[1] = P.alg_aes_gcm;
-  out.set(nonce, 2);
-  out.set(ct, 2 + nonce.length);
-  return b64(out);
-}
-
-async function descifrar(clave, blob, aad) {
-  const crudo = deB64(blob);
-  if (crudo[0] !== V.version_esquema) throw new Error('versión no soportada');
-  if (crudo[1] !== P.alg_aes_gcm) throw new Error('algoritmo no soportado');
-  const k = await cripto.subtle.importKey('raw', clave, { name: 'AES-GCM' }, false, ['decrypt']);
-  return new Uint8Array(await cripto.subtle.decrypt(
-    { name: 'AES-GCM', iv: crudo.slice(2, 14), additionalData: aad, tagLength: 128 },
-    k, crudo.slice(14)));
-}
+const derivarMKpbkdf2 = (password, email) => derivarMK(password, email);
 
 // ── ejecución ───────────────────────────────────────────────────────────────
 const esperado = Object.fromEntries(V.casos.map((c) => [c.nombre, c.esperado]));

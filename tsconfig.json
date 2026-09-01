@@ -1,0 +1,17 @@
+{
+  "//": "Alineado a proposito con el tsconfig de visual-gestion-claves: este mismo fichero compila alli sin errores, y si los dos no usan el mismo target y las mismas libs, TypeScript resuelve distinto los tipos de Uint8Array y BufferSource. Con ES2022+DOM fallaba; con esnext, no.",
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "typescript",
+    "removeComments": false
+  },
+  "include": ["typescript/passrodCripto.ts"]
+}

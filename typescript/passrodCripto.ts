@@ -9,11 +9,39 @@
  * solo recibe `auth_hash` y blobs opacos.
  */
 
-const cripto: Crypto =
-  typeof globalThis.crypto !== 'undefined' && globalThis.crypto.subtle
-    ? globalThis.crypto
-    : // eslint-disable-next-line @typescript-eslint/no-var-requires
-      (require('crypto').webcrypto as Crypto);
+let _cripto: Crypto | null = null;
+
+/**
+ * La WebCrypto del entorno, resuelta la PRIMERA VEZ QUE SE USA.
+ *
+ * Antes se resolvía al cargar el módulo, y con un `require('crypto').webcrypto`
+ * de reserva para Node antiguo. Las dos cosas estorbaban:
+ *
+ *  - El `require` dentro de un módulo ESM lo intentan resolver los bundlers en
+ *    tiempo de compilación aunque nunca se ejecute, y este fichero pasa a
+ *    empaquetarse para la web y para la extensión de navegador.
+ *  - Resolverla al cargar hace que el módulo REVIENTE AL IMPORTARSE si el
+ *    entorno no tiene WebCrypto. Y este módulo se importa también en el
+ *    servidor: la web corre en Amplify con Next en modo SSR, así que Node la
+ *    carga aunque el cifrado ocurra siempre en el navegador. Un fallo ahí
+ *    tumbaría el renderizado entero por una función que nadie iba a llamar.
+ *
+ * Resolviéndola de forma perezosa, el módulo se puede importar en cualquier
+ * sitio y el error —si de verdad falta WebCrypto— aparece al cifrar, que es
+ * cuando importa y donde se entiende.
+ */
+function obtenerCripto(): Crypto {
+  if (_cripto) return _cripto;
+  const c = globalThis.crypto;
+  if (!c || !c.subtle) {
+    throw new Error(
+      'Este entorno no tiene WebCrypto (globalThis.crypto.subtle). PassRod ' +
+        'necesita un navegador moderno o Node 18 o superior.'
+    );
+  }
+  _cripto = c;
+  return c;
+}
 
 // ── Parámetros del esquema (§2) ─────────────────────────────────────────────
 export const VERSION_ESQUEMA = 2;
@@ -72,7 +100,7 @@ export function limpiar(...buffers: Uint8Array[]): void {
  */
 export async function saltDesdeEmail(email: string): Promise<Uint8Array> {
   const normalizado = email.trim().toLowerCase();
-  const h = await cripto.subtle.digest('SHA-256', utf8.encode(PREFIJO_SALT + normalizado));
+  const h = await obtenerCripto().subtle.digest('SHA-256', utf8.encode(PREFIJO_SALT + normalizado));
   return new Uint8Array(h);
 }
 
@@ -86,9 +114,9 @@ export async function saltDesdeEmail(email: string): Promise<Uint8Array> {
  */
 export async function derivarMK(password: string, email: string): Promise<Uint8Array> {
   const salt = await saltDesdeEmail(email);
-  const base = await cripto.subtle.importKey(
+  const base = await obtenerCripto().subtle.importKey(
     'raw', utf8.encode(password), { name: 'PBKDF2' }, false, ['deriveBits']);
-  const bits = await cripto.subtle.deriveBits(
+  const bits = await obtenerCripto().subtle.deriveBits(
     { name: 'PBKDF2', salt, iterations: PBKDF2_ITERACIONES, hash: 'SHA-256' },
     base, 256);
   return new Uint8Array(bits);
@@ -96,8 +124,8 @@ export async function derivarMK(password: string, email: string): Promise<Uint8A
 
 /** HKDF-SHA256 con salt vacío (RFC 5869). */
 export async function hkdf(ikm: Uint8Array, info: string, largo = 32): Promise<Uint8Array> {
-  const base = await cripto.subtle.importKey('raw', ikm, { name: 'HKDF' }, false, ['deriveBits']);
-  const bits = await cripto.subtle.deriveBits(
+  const base = await obtenerCripto().subtle.importKey('raw', ikm, { name: 'HKDF' }, false, ['deriveBits']);
+  const bits = await obtenerCripto().subtle.deriveBits(
     { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode(info) },
     base, largo * 8);
   return new Uint8Array(bits);
@@ -134,12 +162,12 @@ export function construirAAD(tipo: string, idRecurso: string | number,
 /** base64( VER(1) ‖ ALG(1) ‖ NONCE(12) ‖ CIPHERTEXT‖TAG(16) ) */
 export async function cifrar(clave: Uint8Array, plano: Uint8Array,
                              aad: Uint8Array, nonce?: Uint8Array): Promise<string> {
-  const iv = nonce ?? cripto.getRandomValues(new Uint8Array(12));
+  const iv = nonce ?? obtenerCripto().getRandomValues(new Uint8Array(12));
   if (iv.length !== 12) throw new Error('El nonce debe ser de 12 bytes');
 
-  const k = await cripto.subtle.importKey('raw', clave, { name: 'AES-GCM' }, false, ['encrypt']);
+  const k = await obtenerCripto().subtle.importKey('raw', clave, { name: 'AES-GCM' }, false, ['encrypt']);
   const ct = new Uint8Array(
-    await cripto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad, tagLength: 128 }, k, plano));
+    await obtenerCripto().subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad, tagLength: 128 }, k, plano));
 
   const salida = new Uint8Array(2 + iv.length + ct.length);
   salida[0] = VERSION_ESQUEMA;
@@ -163,8 +191,8 @@ export async function descifrar(clave: Uint8Array, blob: string,
 
   const iv = crudo.slice(2, 14);
   const ct = crudo.slice(14);
-  const k = await cripto.subtle.importKey('raw', clave, { name: 'AES-GCM' }, false, ['decrypt']);
-  const plano = await cripto.subtle.decrypt(
+  const k = await obtenerCripto().subtle.importKey('raw', clave, { name: 'AES-GCM' }, false, ['decrypt']);
+  const plano = await obtenerCripto().subtle.decrypt(
     { name: 'AES-GCM', iv, additionalData: aad, tagLength: 128 }, k, ct);
   return new Uint8Array(plano);
 }
@@ -185,7 +213,7 @@ export async function descifrarCredencial<T>(vk: Uint8Array, blob: string,
 }
 
 /** Clave de bóveda nueva. Aleatoria de verdad: nunca derivarla de nada. */
-export const nuevaClaveBoveda = () => cripto.getRandomValues(new Uint8Array(32));
+export const nuevaClaveBoveda = () => obtenerCripto().getRandomValues(new Uint8Array(32));
 
 export const envolverClaveBoveda = (sk: Uint8Array, vk: Uint8Array,
                                     idBoveda: string | number, nonce?: Uint8Array) =>
@@ -213,12 +241,12 @@ export interface ParDeClaves {
 
 /** Par de claves del usuario. Se genera una vez, en el registro. */
 export async function generarParDeClaves(): Promise<ParDeClaves> {
-  const par = await cripto.subtle.generateKey(
+  const par = await obtenerCripto().subtle.generateKey(
     { ...RSA_OAEP, modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]) },
     true, ['encrypt', 'decrypt']) as CryptoKeyPair;
   return {
-    publicaSpki: new Uint8Array(await cripto.subtle.exportKey('spki', par.publicKey)),
-    privadaPkcs8: new Uint8Array(await cripto.subtle.exportKey('pkcs8', par.privateKey)),
+    publicaSpki: new Uint8Array(await obtenerCripto().subtle.exportKey('spki', par.publicKey)),
+    privadaPkcs8: new Uint8Array(await obtenerCripto().subtle.exportKey('pkcs8', par.privateKey)),
   };
 }
 
@@ -230,16 +258,16 @@ export async function generarParDeClaves(): Promise<ParDeClaves> {
  */
 export async function envolverParaUsuario(publicaSpki: Uint8Array,
                                           vk: Uint8Array): Promise<string> {
-  const pub = await cripto.subtle.importKey('spki', publicaSpki, RSA_OAEP, false, ['encrypt']);
-  return aBase64(new Uint8Array(await cripto.subtle.encrypt({ name: 'RSA-OAEP' }, pub, vk)));
+  const pub = await obtenerCripto().subtle.importKey('spki', publicaSpki, RSA_OAEP, false, ['encrypt']);
+  return aBase64(new Uint8Array(await obtenerCripto().subtle.encrypt({ name: 'RSA-OAEP' }, pub, vk)));
 }
 
 /** Abre una clave de bóveda que envolvieron para mí. */
 export async function abrirConPrivada(privadaPkcs8: Uint8Array,
                                       envuelta: string): Promise<Uint8Array> {
-  const priv = await cripto.subtle.importKey('pkcs8', privadaPkcs8, RSA_OAEP, false, ['decrypt']);
+  const priv = await obtenerCripto().subtle.importKey('pkcs8', privadaPkcs8, RSA_OAEP, false, ['decrypt']);
   return new Uint8Array(
-    await cripto.subtle.decrypt({ name: 'RSA-OAEP' }, priv, deBase64(envuelta)));
+    await obtenerCripto().subtle.decrypt({ name: 'RSA-OAEP' }, priv, deBase64(envuelta)));
 }
 
 /** La privada nunca llega al servidor sin envolver. */
