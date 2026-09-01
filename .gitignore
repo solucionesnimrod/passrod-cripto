@@ -12,7 +12,13 @@ __pycache__/
 # dependencias
 node_modules/
 
-# dist/ SI se versiona a proposito: la web y la extension consumen este paquete
-# por ruta local (file:../passrod-cripto), no desde un registro npm, y con esa
-# forma de instalar npm no siempre ejecuta el script de compilacion. Versionar
-# el compilado evita que un clon recien hecho se quede sin el modulo.
+# dist/ SI se versiona a proposito. Este paquete no se publica en ningun
+# registro: se consume por ruta local durante el desarrollo y desde su URL de
+# git en las compilaciones de Amplify. Con la ruta local npm NO ejecuta el
+# script de compilacion, asi que un dist/ sin versionar dejaria el modulo vacio
+# justo donde mas se nota. Versionarlo tambien evita depender de un `prepare`
+# que exigiria instalar TypeScript solo para instalar la dependencia.
+#
+# Contrapartida: hay que acordarse de compilar antes de commitear un cambio en
+# typescript/. `npm test` compila y pasa el banco de vectores, asi que basta con
+# ejecutarlo antes de cada commit.
