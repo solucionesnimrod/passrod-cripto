@@ -21,13 +21,19 @@ passrod-cripto/
 ├── vectores/
 │   ├── generar_vectores.py   ← IMPLEMENTACIÓN DE REFERENCIA
 │   ├── vectores.json         ← el contrato: 18 valores esperados
+│   ├── generar_vectores_totp.py ← referencia del doble factor (RFC 6238)
+│   ├── vectores_totp.json    ← contrato TOTP: 28 códigos, etiquetas y rechazos
 │   └── par_rsa_pruebas.pem   ← par RSA fijo, SOLO para verificar
 ├── typescript/
 │   ├── passrodCripto.ts      ← para visual-gestion-claves y la extensión
-│   └── verificar.mjs
+│   ├── totp.ts               ← doble factor; se exporta desde passrodCripto
+│   ├── verificar.mjs
+│   └── verificarTotp.mjs
 ├── java/
 │   ├── PassrodCripto.java    ← para desktop-passrod; base directa para Android
-│   └── VerificarVectores.java
+│   ├── PassrodTotp.java      ← doble factor, mismo contrato que totp.ts
+│   ├── VerificarVectores.java
+│   └── VerificarTotp.java
 └── verificar_todo.py         ← ejecuta todo, incluida la prueba cruzada
 ```
 
@@ -143,3 +149,19 @@ ya están generados y esperando.
 Es un par de claves **de prueba**, fijo a propósito para que los vectores sean
 reproducibles entre ejecuciones. No se usa en producción, donde cada usuario
 genera el suyo en el registro y la privada nunca sale de su equipo sin envolver.
+
+## Doble factor (TOTP)
+
+Desde la v2.1.0 el paquete calcula los códigos de verificación en dos pasos
+(RFC 6238): `leerTotp(texto)` acepta la URI `otpauth://totp/...` de un QR o el
+secreto base32 suelto, y `codigoTotp(config, ahoraMs)` da el código vigente.
+La referencia en Python comprueba al generarse que reproduce los 18 códigos del
+apéndice B de la RFC; si no, no escribe el banco.
+
+```
+npm test                                   # cifrado + TOTP en TypeScript
+cd java && javac -encoding UTF-8 -d . PassrodTotp.java VerificarTotp.java && java -cp . VerificarTotp
+```
+
+Lo que el QR trae (el secreto) viaja dentro de la credencial cifrada, como
+cualquier otro campo: el servidor no lo ve.

@@ -1,0 +1,241 @@
+{
+  "descripcion": "TOTP (RFC 6238) de PassRod. Generado por generar_vectores_totp.py; no editar a mano.",
+  "codigos": [
+    {
+      "nombre": "rfc6238_sha1_59",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&algorithm=SHA1&digits=8&period=30",
+      "tiempo": 59,
+      "esperado": "94287082"
+    },
+    {
+      "nombre": "rfc6238_sha256_59",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZA&algorithm=SHA256&digits=8&period=30",
+      "tiempo": 59,
+      "esperado": "46119246"
+    },
+    {
+      "nombre": "rfc6238_sha512_59",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNA&algorithm=SHA512&digits=8&period=30",
+      "tiempo": 59,
+      "esperado": "90693936"
+    },
+    {
+      "nombre": "rfc6238_sha1_1111111109",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&algorithm=SHA1&digits=8&period=30",
+      "tiempo": 1111111109,
+      "esperado": "07081804"
+    },
+    {
+      "nombre": "rfc6238_sha256_1111111109",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZA&algorithm=SHA256&digits=8&period=30",
+      "tiempo": 1111111109,
+      "esperado": "68084774"
+    },
+    {
+      "nombre": "rfc6238_sha512_1111111109",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNA&algorithm=SHA512&digits=8&period=30",
+      "tiempo": 1111111109,
+      "esperado": "25091201"
+    },
+    {
+      "nombre": "rfc6238_sha1_1111111111",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&algorithm=SHA1&digits=8&period=30",
+      "tiempo": 1111111111,
+      "esperado": "14050471"
+    },
+    {
+      "nombre": "rfc6238_sha256_1111111111",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZA&algorithm=SHA256&digits=8&period=30",
+      "tiempo": 1111111111,
+      "esperado": "67062674"
+    },
+    {
+      "nombre": "rfc6238_sha512_1111111111",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNA&algorithm=SHA512&digits=8&period=30",
+      "tiempo": 1111111111,
+      "esperado": "99943326"
+    },
+    {
+      "nombre": "rfc6238_sha1_1234567890",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&algorithm=SHA1&digits=8&period=30",
+      "tiempo": 1234567890,
+      "esperado": "89005924"
+    },
+    {
+      "nombre": "rfc6238_sha256_1234567890",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZA&algorithm=SHA256&digits=8&period=30",
+      "tiempo": 1234567890,
+      "esperado": "91819424"
+    },
+    {
+      "nombre": "rfc6238_sha512_1234567890",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNA&algorithm=SHA512&digits=8&period=30",
+      "tiempo": 1234567890,
+      "esperado": "93441116"
+    },
+    {
+      "nombre": "rfc6238_sha1_2000000000",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&algorithm=SHA1&digits=8&period=30",
+      "tiempo": 2000000000,
+      "esperado": "69279037"
+    },
+    {
+      "nombre": "rfc6238_sha256_2000000000",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZA&algorithm=SHA256&digits=8&period=30",
+      "tiempo": 2000000000,
+      "esperado": "90698825"
+    },
+    {
+      "nombre": "rfc6238_sha512_2000000000",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNA&algorithm=SHA512&digits=8&period=30",
+      "tiempo": 2000000000,
+      "esperado": "38618901"
+    },
+    {
+      "nombre": "rfc6238_sha1_20000000000",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&algorithm=SHA1&digits=8&period=30",
+      "tiempo": 20000000000,
+      "esperado": "65353130"
+    },
+    {
+      "nombre": "rfc6238_sha256_20000000000",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZA&algorithm=SHA256&digits=8&period=30",
+      "tiempo": 20000000000,
+      "esperado": "77737706"
+    },
+    {
+      "nombre": "rfc6238_sha512_20000000000",
+      "entrada": "otpauth://totp/RFC6238?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNA&algorithm=SHA512&digits=8&period=30",
+      "tiempo": 20000000000,
+      "esperado": "47863826"
+    },
+    {
+      "nombre": "secreto_solo",
+      "entrada": "JBSWY3DPEHPK3PXP",
+      "tiempo": 1789467000,
+      "esperado": "946189"
+    },
+    {
+      "nombre": "secreto_minusculas_espacios",
+      "entrada": "jbsw y3dp ehpk 3pxp",
+      "tiempo": 1789467000,
+      "esperado": "946189"
+    },
+    {
+      "nombre": "secreto_con_relleno",
+      "entrada": "JBSWY3DPEHPK3PXP======",
+      "tiempo": 1789467000,
+      "esperado": "946189"
+    },
+    {
+      "nombre": "uri_minima",
+      "entrada": "otpauth://totp/Ejemplo?secret=JBSWY3DPEHPK3PXP",
+      "tiempo": 1789467000,
+      "esperado": "946189"
+    },
+    {
+      "nombre": "uri_periodo_60_6_digitos",
+      "entrada": "otpauth://totp/X?secret=JBSWY3DPEHPK3PXP&period=60",
+      "tiempo": 1789467059,
+      "esperado": "838178"
+    },
+    {
+      "nombre": "uri_algoritmo_minusculas",
+      "entrada": "otpauth://totp/X?secret=JBSWY3DPEHPK3PXP&algorithm=sha256",
+      "tiempo": 1789467000,
+      "esperado": "453764"
+    },
+    {
+      "nombre": "uri_parametros_mayusculas",
+      "entrada": "otpauth://TOTP/X?SECRET=JBSWY3DPEHPK3PXP&DIGITS=7",
+      "tiempo": 1789467000,
+      "esperado": "4946189"
+    },
+    {
+      "nombre": "uri_limite_de_periodo",
+      "entrada": "otpauth://totp/X?secret=JBSWY3DPEHPK3PXP",
+      "tiempo": 1789467029,
+      "esperado": "946189"
+    },
+    {
+      "nombre": "uri_siguiente_periodo",
+      "entrada": "otpauth://totp/X?secret=JBSWY3DPEHPK3PXP",
+      "tiempo": 1789467030,
+      "esperado": "129559"
+    },
+    {
+      "nombre": "contador_de_64_bits",
+      "entrada": "JBSWY3DPEHPK3PXP",
+      "tiempo": 128849018939,
+      "esperado": "957437"
+    }
+  ],
+  "etiquetas": [
+    {
+      "nombre": "etiqueta_emisor_y_cuenta",
+      "entrada": "otpauth://totp/GitHub:ana%40correo.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub",
+      "emisor": "GitHub",
+      "cuenta": "ana@correo.com"
+    },
+    {
+      "nombre": "etiqueta_issuer_manda",
+      "entrada": "otpauth://totp/Viejo:ana?secret=JBSWY3DPEHPK3PXP&issuer=Nuevo%20Nombre",
+      "emisor": "Nuevo Nombre",
+      "cuenta": "ana"
+    },
+    {
+      "nombre": "etiqueta_sin_emisor",
+      "entrada": "otpauth://totp/ana%40correo.com?secret=JBSWY3DPEHPK3PXP",
+      "emisor": "",
+      "cuenta": "ana@correo.com"
+    },
+    {
+      "nombre": "etiqueta_espacio_tras_dos_puntos",
+      "entrada": "otpauth://totp/Banco%3A%20ana?secret=JBSWY3DPEHPK3PXP",
+      "emisor": "Banco",
+      "cuenta": "ana"
+    }
+  ],
+  "invalidos": [
+    {
+      "nombre": "vacio",
+      "entrada": ""
+    },
+    {
+      "nombre": "hotp",
+      "entrada": "otpauth://hotp/X?secret=JBSWY3DPEHPK3PXP&counter=0"
+    },
+    {
+      "nombre": "sin_secreto",
+      "entrada": "otpauth://totp/X?issuer=Y"
+    },
+    {
+      "nombre": "base32_con_caracter_1",
+      "entrada": "JBSWY3DPEHPK3PX1"
+    },
+    {
+      "nombre": "algoritmo_desconocido",
+      "entrada": "otpauth://totp/X?secret=JBSWY3DPEHPK3PXP&algorithm=MD5"
+    },
+    {
+      "nombre": "cinco_digitos",
+      "entrada": "otpauth://totp/X?secret=JBSWY3DPEHPK3PXP&digits=5"
+    },
+    {
+      "nombre": "nueve_digitos",
+      "entrada": "otpauth://totp/X?secret=JBSWY3DPEHPK3PXP&digits=9"
+    },
+    {
+      "nombre": "periodo_cero",
+      "entrada": "otpauth://totp/X?secret=JBSWY3DPEHPK3PXP&period=0"
+    },
+    {
+      "nombre": "digitos_no_numericos",
+      "entrada": "otpauth://totp/X?secret=JBSWY3DPEHPK3PXP&digits=seis"
+    },
+    {
+      "nombre": "otra_url",
+      "entrada": "https://github.com/login"
+    }
+  ]
+}

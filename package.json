@@ -1,6 +1,6 @@
 {
   "name": "@solucionesnimrod/passrod-cripto",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Núcleo criptográfico de PassRod v2. Una sola implementación para la web, la extensión de navegador y cualquier cliente TypeScript.",
   "license": "UNLICENSED",
   "private": true,
@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node typescript/verificar.mjs"
+    "test": "npm run build && node typescript/verificar.mjs && node typescript/verificarTotp.mjs"
   },
   "devDependencies": {
     "@types/node": "^20",

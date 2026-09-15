@@ -78,3 +78,4 @@ export declare const abrirClavePrivada: (sk: Uint8Array, envuelta: string) => Pr
 export declare const claveDeRecuperacion: (codigo: string) => Promise<Uint8Array<ArrayBufferLike>>;
 export declare function envolverParaRecuperacion(codigo: string, mk: Uint8Array, nonce?: Uint8Array): Promise<string>;
 export declare function recuperarMK(codigo: string, blob: string): Promise<Uint8Array>;
+export * from './totp.js';

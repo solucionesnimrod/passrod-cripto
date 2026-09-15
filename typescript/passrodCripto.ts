@@ -297,3 +297,6 @@ export async function recuperarMK(codigo: string, blob: string): Promise<Uint8Ar
   limpiar(rk);
   return mk;
 }
+
+// Doble factor (TOTP). Vive aparte porque no toca las claves de PassRod.
+export * from './totp.js';
