@@ -153,6 +153,52 @@ public class VerificarVectores {
         }
         anotar("generador_de_codigos", formato, String.valueOf(formato), "true");
 
+        // ── v2.3.0: Argon2id y límites del KDF ──────────────────────────────
+        PassrodCripto.Kdf a2 = new PassrodCripto.Kdf("argon2id", 3, 65536, 4);
+        byte[] mkA = PassrodCripto.derivarMK(password.toCharArray(), email, a2);
+        comprobar("mk_argon2id", B64.encodeToString(mkA));
+        comprobar("sk_argon2id", B64.encodeToString(PassrodCripto.derivarSK(mkA)));
+        comprobar("authkey_argon2id", B64.encodeToString(PassrodCripto.derivarAuthKey(mkA)));
+        anotar("argon2id_desde_nfd", java.util.Arrays.equals(mkA, PassrodCripto.derivarMK(
+                entradas.get("password_nfd").toCharArray(), email, a2)), "-", "igual que desde NFC");
+        anotar("kdf_nuevas_es_argon2id_del_banco", a2.equals(PassrodCripto.KDF_NUEVAS),
+                String.valueOf(PassrodCripto.KDF_NUEVAS), String.valueOf(a2));
+        Object[][] limites = {
+            {"pbkdf2 con 1 iteración", new PassrodCripto.Kdf("pbkdf2", 1, 0, 0), true},
+            {"pbkdf2 con 599 999", new PassrodCripto.Kdf("pbkdf2", 599_999, 0, 0), true},
+            {"pbkdf2 con 2 000 000 000 (colgaría el cliente)", new PassrodCripto.Kdf("pbkdf2", 2_000_000_000, 0, 0), true},
+            {"argon2id con 1 MiB", new PassrodCripto.Kdf("argon2id", 3, 1024, 4), true},
+            {"argon2id con 1 pasada", new PassrodCripto.Kdf("argon2id", 1, 65536, 4), true},
+            {"argon2id con 64 GiB", new PassrodCripto.Kdf("argon2id", 3, 67_108_864, 4), true},
+            {"un tipo desconocido", new PassrodCripto.Kdf("md5", 1, 0, 0), true},
+            {"admite pbkdf2 600 000", new PassrodCripto.Kdf("pbkdf2", 600_000, 0, 0), false},
+            {"admite el de las cuentas nuevas", PassrodCripto.KDF_NUEVAS, false},
+        };
+        for (Object[] l : limites) {
+            boolean rechazaKdf;
+            try {
+                PassrodCripto.validarKdf((PassrodCripto.Kdf) l[1]);
+                rechazaKdf = false;
+            } catch (IllegalArgumentException e) {
+                rechazaKdf = true;
+            }
+            anotar("kdf: " + l[0], rechazaKdf == (Boolean) l[2], String.valueOf(rechazaKdf), String.valueOf(l[2]));
+        }
+        String[] ida = PassrodCripto.kdfParaServidor(PassrodCripto.KDF_NUEVAS);
+        boolean vueltaKdf = PassrodCripto.kdfDesdeServidor(ida[0], ida[1]).equals(PassrodCripto.KDF_NUEVAS)
+                && PassrodCripto.kdfDesdeServidor(null, null).equals(PassrodCripto.KDF_PBKDF2);
+        boolean rechaza1;
+        try {
+            PassrodCripto.kdfDesdeServidor("pbkdf2", "{\"iteraciones\":1}");
+            rechaza1 = false;
+        } catch (IllegalArgumentException e) {
+            rechaza1 = true;
+        }
+        anotar("kdf ida y vuelta con el servidor", vueltaKdf && rechaza1, ida[0] + " " + ida[1], "ida y vuelta");
+        anotar("kdf_params igual que TypeScript", "{\"m\":65536,\"t\":3,\"p\":4}".equals(ida[1]), ida[1], "{\"m\":65536,\"t\":3,\"p\":4}");
+        anotar("authHash con argon2id = base64(authkey_argon2id)",
+                PassrodCripto.authHash(password.toCharArray(), email, a2).equals(esperado.get("authkey_argon2id")), "-", "-");
+
         // la AAD debe atar el blob a su ubicación
         boolean atado = false;
         try {

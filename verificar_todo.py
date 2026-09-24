@@ -22,6 +22,14 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 JAVA = r"C:\Program Files\Java\jdk-17\bin\java.exe"
 JAVAC = r"C:\Program Files\Java\jdk-17\bin\javac.exe"
 
+# Bouncy Castle, para Argon2id (desde la v2.3.0). Maven lo deja aquí; si falta:
+#   mvn dependency:get -Dartifact=org.bouncycastle:bcprov-jdk18on:1.81
+BC = os.path.join(os.path.expanduser("~"), ".m2", "repository", "org", "bouncycastle",
+                  "bcprov-jdk18on", "1.81", "bcprov-jdk18on-1.81.jar")
+if not os.path.exists(BC):
+    sys.exit("Falta Bouncy Castle en " + BC)
+CP = "." + os.pathsep + BC
+
 sys.path.insert(0, os.path.join(AQUI, "vectores"))
 from generar_vectores import (  # noqa: E402
     cifrar, descifrar, aad_de, derivar_mk_pbkdf2, hkdf, INFO_ENC)
@@ -55,9 +63,9 @@ print("   " + [l for l in salida.strip().splitlines() if l.strip()][-1])
 fallos += (cod != 0)
 
 print("\n-- Java --")
-correr([JAVAC, "-encoding", "UTF-8", "-d", ".", "PassrodCripto.java", "VerificarVectores.java"],
+correr([JAVAC, "-encoding", "UTF-8", "-cp", CP, "-d", ".", "PassrodCripto.java", "VerificarVectores.java"],
        os.path.join(AQUI, "java"))
-cod, salida = correr([JAVA, "-Dfile.encoding=UTF-8", "-cp", ".", "VerificarVectores"],
+cod, salida = correr([JAVA, "-Dfile.encoding=UTF-8", "-cp", CP, "VerificarVectores"],
                      os.path.join(AQUI, "java"))
 print("   " + [l for l in salida.strip().splitlines() if l.strip()][-1])
 fallos += (cod != 0)
@@ -68,7 +76,7 @@ fallos += (cod != 0)
 print()
 print("-- Java con el equipo en turco --")
 cod, salida = correr([JAVA, "-Dfile.encoding=UTF-8", "-Duser.language=tr", "-Duser.country=TR",
-                      "-cp", ".", "VerificarVectores"], os.path.join(AQUI, "java"))
+                      "-cp", CP, "VerificarVectores"], os.path.join(AQUI, "java"))
 print("   " + [l for l in salida.strip().splitlines() if l.strip()][-1])
 fallos += (cod != 0)
 
@@ -107,9 +115,9 @@ public class Puente {
 """
 with open(os.path.join(AQUI, "java", "Puente.java"), "w", encoding="utf-8") as f:
     f.write(puente_java)
-correr([JAVAC, "-encoding", "UTF-8", "-cp", ".", "-d", ".", "Puente.java"],
+correr([JAVAC, "-encoding", "UTF-8", "-cp", CP, "-d", ".", "Puente.java"],
        os.path.join(AQUI, "java"))
-cod, salida = correr([JAVA, "-cp", ".", "Puente", b64(vk), b64(aad), blob_py],
+cod, salida = correr([JAVA, "-cp", CP, "Puente", b64(vk), b64(aad), blob_py],
                      os.path.join(AQUI, "java"))
 java_abierto = java_cifrado = None
 for linea in salida.splitlines():
@@ -200,9 +208,9 @@ public class PuenteRsa {
 """
 with open(os.path.join(AQUI, "java", "PuenteRsa.java"), "w", encoding="utf-8") as f:
     f.write(puente_rsa_java)
-correr([JAVAC, "-encoding", "UTF-8", "-cp", ".", "-d", ".", "PuenteRsa.java"],
+correr([JAVAC, "-encoding", "UTF-8", "-cp", CP, "-d", ".", "PuenteRsa.java"],
        os.path.join(AQUI, "java"))
-cod, salida = correr([JAVA, "-cp", ".", "PuenteRsa", b64(pub_spki), b64(vk_compartida)],
+cod, salida = correr([JAVA, "-cp", CP, "PuenteRsa", b64(pub_spki), b64(vk_compartida)],
                      os.path.join(AQUI, "java"))
 env_java = next((l[9:].strip() for l in salida.splitlines() if l.startswith("ENVUELTA:")), None)
 try:
@@ -254,10 +262,10 @@ public class AbrirRsa {
 """
 with open(os.path.join(AQUI, "java", "AbrirRsa.java"), "w", encoding="utf-8") as f:
     f.write(puente_abrir_java)
-correr([JAVAC, "-encoding", "UTF-8", "-cp", ".", "-d", ".", "AbrirRsa.java"],
+correr([JAVAC, "-encoding", "UTF-8", "-cp", CP, "-d", ".", "AbrirRsa.java"],
        os.path.join(AQUI, "java"))
 priv_envuelta = cifrar(sk, priv_pkcs8, aad_de("clave_privada", 0, 0), os.urandom(12))
-cod, salida = correr([JAVA, "-cp", ".", "AbrirRsa", b64(sk), priv_envuelta, env_py],
+cod, salida = correr([JAVA, "-cp", CP, "AbrirRsa", b64(sk), priv_envuelta, env_py],
                      os.path.join(AQUI, "java"))
 abierta = next((l[8:].strip() for l in salida.splitlines() if l.startswith("ABIERTA:")), None)
 ok = abierta is not None and base64.b64decode(abierta) == vk_compartida
@@ -283,11 +291,11 @@ public class PuenteFirma {
 """
 with open(os.path.join(AQUI, "java", "PuenteFirma.java"), "w", encoding="utf-8") as f:
     f.write(puente_firma_java)
-correr([JAVAC, "-encoding", "UTF-8", "-cp", ".", "-d", ".", "PuenteFirma.java"],
+correr([JAVAC, "-encoding", "UTF-8", "-cp", CP, "-d", ".", "PuenteFirma.java"],
        os.path.join(AQUI, "java"))
 env_ref = b64(os.urandom(256))
 firma_py = b64(firmar_envoltura(priv, 31, 44, env_ref))
-cod, salida = correr([JAVA, "-cp", ".", "PuenteFirma", b64(priv_pkcs8), b64(pub_spki), env_ref, firma_py],
+cod, salida = correr([JAVA, "-cp", CP, "PuenteFirma", b64(priv_pkcs8), b64(pub_spki), env_ref, firma_py],
                      os.path.join(AQUI, "java"))
 firma_java = next((l[6:].strip() for l in salida.splitlines() if l.startswith("FIRMA:")), "")
 java_verifica_py = "VERIFICA:true" in salida

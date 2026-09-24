@@ -8,6 +8,7 @@
  * Todo el material sensible se deriva y se usa aquí, en el cliente. El servidor
  * solo recibe `auth_hash` y blobs opacos.
  */
+import { argon2id } from 'hash-wasm';
 let _cripto = null;
 /**
  * La WebCrypto del entorno, resuelta la PRIMERA VEZ QUE SE USA.
@@ -104,18 +105,74 @@ export function normalizarEmail(email) {
 }
 /** La contraseña se deriva siempre en NFC, por el mismo motivo que el correo. */
 const passwordUtf8 = (password) => utf8.encode(password.normalize('NFC'));
+/** El de las cuentas anteriores a la v2.3.0. */
+export const KDF_PBKDF2 = { tipo: 'pbkdf2', iteraciones: PBKDF2_ITERACIONES };
+/** El de las cuentas nuevas: 64 MiB, 3 pasadas, 4 hilos (memoria en KiB). */
+export const KDF_ARGON2ID = { tipo: 'argon2id', memoria: 65536, iteraciones: 3, paralelismo: 4 };
+export const KDF_NUEVAS = KDF_ARGON2ID;
+/** Devuelve el KDF si cumple los mínimos y máximos; si no, lanza. */
+export function validarKdf(k) {
+    if (k?.tipo === 'pbkdf2') {
+        if (!Number.isInteger(k.iteraciones) || k.iteraciones < 600_000 || k.iteraciones > 5_000_000) {
+            throw new Error(`PBKDF2 con ${k.iteraciones} iteraciones: fuera de lo admitido (600 000 a 5 000 000)`);
+        }
+        return { tipo: 'pbkdf2', iteraciones: k.iteraciones };
+    }
+    if (k?.tipo === 'argon2id') {
+        const ok = Number.isInteger(k.memoria) && k.memoria >= 65536 && k.memoria <= 1_048_576
+            && Number.isInteger(k.iteraciones) && k.iteraciones >= 3 && k.iteraciones <= 20
+            && Number.isInteger(k.paralelismo) && k.paralelismo >= 1 && k.paralelismo <= 16;
+        if (!ok)
+            throw new Error('Parámetros de Argon2id fuera de lo admitido');
+        return { tipo: 'argon2id', memoria: k.memoria, iteraciones: k.iteraciones, paralelismo: k.paralelismo };
+    }
+    throw new Error('Función de derivación desconocida');
+}
 /**
- * Clave maestra con PBKDF2-SHA256.
- *
- * Es el algoritmo por defecto porque WebCrypto lo trae nativo, igual que Java y
- * Android. Argon2id resiste mejor el ataque por hardware dedicado, pero en el
- * navegador exige WASM; el campo `kdf_tipo` del usuario existe precisamente
- * para poder cambiarlo sin romper a quien ya está registrado.
+ * El KDF tal como lo guarda el servidor (`kdf_tipo` y `kdf_params`), validado.
+ * Sin datos, el de las cuentas antiguas.
  */
-export async function derivarMK(password, email) {
+export function kdfDesdeServidor(tipo, params) {
+    if (!tipo)
+        return KDF_PBKDF2;
+    const p = (typeof params === 'string' ? JSON.parse(params || '{}') : params ?? {});
+    if (tipo === 'pbkdf2')
+        return validarKdf({ tipo: 'pbkdf2', iteraciones: p.iteraciones ?? PBKDF2_ITERACIONES });
+    if (tipo === 'argon2id') {
+        return validarKdf({ tipo: 'argon2id', memoria: p.m, iteraciones: p.t, paralelismo: p.p });
+    }
+    throw new Error(`Función de derivación desconocida: ${tipo}`);
+}
+/** Lo que se envía al servidor para que recuerde el KDF de la cuenta. */
+export function kdfParaServidor(k) {
+    const v = validarKdf(k);
+    return v.tipo === 'pbkdf2'
+        ? { kdf_tipo: 'pbkdf2', kdf_params: JSON.stringify({ iteraciones: v.iteraciones }) }
+        : { kdf_tipo: 'argon2id', kdf_params: JSON.stringify({ m: v.memoria, t: v.iteraciones, p: v.paralelismo }) };
+}
+/**
+ * Clave maestra: PBKDF2-SHA256 o Argon2id según el KDF de la cuenta.
+ *
+ * Sin KDF se usa PBKDF2 con 600 000 iteraciones, el de las cuentas anteriores a
+ * la v2.3.0, para no cambiar el resultado a quien ya llamaba así.
+ */
+export async function derivarMK(password, email, kdf = KDF_PBKDF2) {
+    const k = validarKdf(kdf);
     const salt = await saltDesdeEmail(email);
+    if (k.tipo === 'argon2id') {
+        const clave = passwordUtf8(password);
+        try {
+            return await argon2id({
+                password: clave, salt, parallelism: k.paralelismo, iterations: k.iteraciones,
+                memorySize: k.memoria, hashLength: 32, outputType: 'binary'
+            });
+        }
+        finally {
+            limpiar(clave);
+        }
+    }
     const base = await obtenerCripto().subtle.importKey('raw', passwordUtf8(password), { name: 'PBKDF2' }, false, ['deriveBits']);
-    const bits = await obtenerCripto().subtle.deriveBits({ name: 'PBKDF2', salt, iterations: PBKDF2_ITERACIONES, hash: 'SHA-256' }, base, 256);
+    const bits = await obtenerCripto().subtle.deriveBits({ name: 'PBKDF2', salt, iterations: k.iteraciones, hash: 'SHA-256' }, base, 256);
     return new Uint8Array(bits);
 }
 /** HKDF-SHA256 con salt vacío (RFC 5869). */
@@ -128,8 +185,8 @@ export async function hkdf(ikm, info, largo = 32) {
 export const derivarSK = (mk) => hkdf(mk, INFO_ENC);
 /** Clave de autenticación: su base64 es lo ÚNICO que se envía al servidor. */
 export const derivarAuthKey = (mk) => hkdf(mk, INFO_AUTH);
-export async function authHash(password, email) {
-    const mk = await derivarMK(password, email);
+export async function authHash(password, email, kdf = KDF_PBKDF2) {
+    const mk = await derivarMK(password, email, kdf);
     const ak = await derivarAuthKey(mk);
     const salida = aBase64(ak);
     limpiar(mk, ak);

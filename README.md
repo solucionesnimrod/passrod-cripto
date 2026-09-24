@@ -144,23 +144,31 @@ Dos cosas que costaron y conviene no repetir:
   WebCrypto usa SHA-256 en ambos. Sin `OAEPParameterSpec` explícito, un mensaje
   cifrado en el navegador no se abre en el escritorio.
 
-## Sobre el KDF: PBKDF2 hoy, Argon2id después
+## El KDF: Argon2id para las cuentas nuevas (v2.3.0)
 
-El esquema define **Argon2id** (m=64 MiB, t=3, p=4) como algoritmo preferido, y
-el banco de vectores incluye sus valores. Pero las implementaciones usan
-**PBKDF2-SHA256 con 600 000 iteraciones**, que es nativo en las cuatro
-plataformas: WebCrypto, `javax.crypto`, Android y Python.
+```
+KDF_NUEVAS  = Argon2id  m=65536 KiB (64 MiB), t=3, p=4, 32 B
+KDF_PBKDF2  = PBKDF2-SHA256, 600 000 iteraciones   (cuentas anteriores)
+derivarMK(password, email, kdf)   — sin kdf, PBKDF2 (compatibilidad)
+```
 
-Argon2id resiste mejor el ataque con hardware dedicado, pero exige una
-dependencia externa en cada plataforma: WASM en el navegador (~300 KB), JNI con
-binarios nativos en Java, `argon2kt` en Android. Es una decisión que se puede
-tomar más adelante **sin romper a nadie**, porque el usuario guarda su
-`kdf_tipo` y `kdf_params`: el cliente lee esos campos antes de derivar.
+Argon2id obliga a gastar 64 MiB por intento y encarece mucho el ataque con GPU
+contra un volcado de la base. En TypeScript lo da `hash-wasm` (WebAssembly, MIT;
+la CSP de quien lo use tiene que admitir `'wasm-unsafe-eval'`); en Java, Bouncy
+Castle (`org.bouncycastle:bcprov-jdk18on`). Los dos reproducen byte a byte los
+vectores `mk_argon2id`, `sk_argon2id` y `authkey_argon2id` de la referencia.
 
-Es también lo que hace Bitwarden: PBKDF2 por defecto, Argon2id opcional.
+El KDF de cada cuenta lo guarda el servidor (`kdf_tipo`, `kdf_params`) y el
+cliente lo pide antes de derivar. **Por eso `validarKdf` impone límites**:
+PBKDF2 entre 600 000 y 5 000 000 iteraciones; Argon2id con al menos 64 MiB y 3
+pasadas (y como mucho 1 GiB, 20 pasadas, 16 hilos). Un servidor malicioso no
+puede rebajar los parámetros para abaratar el ataque ni inflarlos para colgar
+el cliente. `kdfDesdeServidor` y `kdfParaServidor` traducen al formato del
+servidor (`{"m":65536,"t":3,"p":4}` / `{"iteraciones":600000}`).
 
-Cuando se adopte, los vectores `mk_argon2id`, `sk_argon2id` y `authkey_argon2id`
-ya están generados y esperando.
+Las cuentas antiguas pasan a Argon2id al cambiar la contraseña o recuperar la
+cuenta: son los dos momentos en que ya se rehace todo lo que depende de la
+clave maestra, incluido el código de recuperación.
 
 ## Al tocar el esquema
 

@@ -24,7 +24,9 @@ import java.util.Locale;
  * diverge de la implementación de TypeScript o Kotlin, una bóveda cifrada en un
  * cliente no se abrirá en otro; por eso los vectores se ejecutan como prueba.
  *
- * Sin dependencias externas: todo sale de la biblioteca estándar de Java.
+ * Una sola dependencia externa desde la v2.3.0: Bouncy Castle
+ * (org.bouncycastle:bcprov-jdk18on), para Argon2id, que la biblioteca estándar
+ * no trae. Todo lo demás sale de la biblioteca estándar de Java.
  */
 public final class PassrodCripto {
 
@@ -88,14 +90,107 @@ public final class PassrodCripto {
      * de intercambio. El array se puede sobrescribir al terminar.
      */
     public static byte[] derivarMK(char[] password, String email) throws Exception {
+        return derivarMK(password, email, KDF_PBKDF2);
+    }
+
+    // ── Función de derivación de la clave maestra (v2.3.0) ───────────────────
+    //
+    // Las cuentas nuevas usan Argon2id (64 MiB, 3 pasadas, 4 hilos): obliga a
+    // gastar memoria por intento y encarece el ataque con GPU contra un volcado
+    // de la base. Las antiguas siguen con PBKDF2 hasta que cambien la contraseña.
+    //
+    // Los parámetros los guarda el servidor, así que se validan AQUÍ contra un
+    // mínimo —si no, un servidor malicioso pediría 1 iteración— y un máximo,
+    // para que no pueda colgar el cliente.
+
+    /** Función de derivación. Para PBKDF2 solo cuentan las iteraciones; la memoria va en KiB. */
+    public record Kdf(String tipo, int iteraciones, int memoria, int paralelismo) {}
+
+    public static final Kdf KDF_PBKDF2 = new Kdf("pbkdf2", PBKDF2_ITERACIONES, 0, 0);
+    public static final Kdf KDF_ARGON2ID = new Kdf("argon2id", 3, 65536, 4);
+    public static final Kdf KDF_NUEVAS = KDF_ARGON2ID;
+
+    /** Devuelve el KDF si cumple los mínimos y máximos; si no, lanza. */
+    public static Kdf validarKdf(Kdf k) {
+        if (k != null && "pbkdf2".equals(k.tipo())) {
+            if (k.iteraciones() < 600_000 || k.iteraciones() > 5_000_000) {
+                throw new IllegalArgumentException("PBKDF2 con " + k.iteraciones()
+                        + " iteraciones: fuera de lo admitido (600 000 a 5 000 000)");
+            }
+            return new Kdf("pbkdf2", k.iteraciones(), 0, 0);
+        }
+        if (k != null && "argon2id".equals(k.tipo())) {
+            boolean ok = k.memoria() >= 65536 && k.memoria() <= 1_048_576
+                    && k.iteraciones() >= 3 && k.iteraciones() <= 20
+                    && k.paralelismo() >= 1 && k.paralelismo() <= 16;
+            if (!ok) throw new IllegalArgumentException("Parámetros de Argon2id fuera de lo admitido");
+            return k;
+        }
+        throw new IllegalArgumentException("Función de derivación desconocida");
+    }
+
+    /** El KDF tal como lo guarda el servidor, validado. Sin datos, el de las cuentas antiguas. */
+    public static Kdf kdfDesdeServidor(String tipo, String paramsJson) {
+        if (tipo == null || tipo.isBlank()) return KDF_PBKDF2;
+        String j = paramsJson == null ? "" : paramsJson;
+        if ("pbkdf2".equals(tipo)) {
+            int it = numeroJson(j, "iteraciones", PBKDF2_ITERACIONES);
+            return validarKdf(new Kdf("pbkdf2", it, 0, 0));
+        }
+        if ("argon2id".equals(tipo)) {
+            return validarKdf(new Kdf("argon2id", numeroJson(j, "t", -1),
+                    numeroJson(j, "m", -1), numeroJson(j, "p", -1)));
+        }
+        throw new IllegalArgumentException("Función de derivación desconocida: " + tipo);
+    }
+
+    /** {kdf_tipo, kdf_params} para que el servidor recuerde el KDF de la cuenta. */
+    public static String[] kdfParaServidor(Kdf k) {
+        Kdf v = validarKdf(k);
+        return "pbkdf2".equals(v.tipo())
+                ? new String[]{"pbkdf2", "{\"iteraciones\":" + v.iteraciones() + "}"}
+                : new String[]{"argon2id", "{\"m\":" + v.memoria() + ",\"t\":" + v.iteraciones()
+                        + ",\"p\":" + v.paralelismo() + "}"};
+    }
+
+    private static int numeroJson(String json, String campo, int porDefecto) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"" + campo + "\"\\s*:\\s*(-?\\d+)").matcher(json);
+        return m.find() ? Integer.parseInt(m.group(1)) : porDefecto;
+    }
+
+    /** Clave maestra con el KDF de la cuenta (PBKDF2-SHA256 o Argon2id). */
+    public static byte[] derivarMK(char[] password, String email, Kdf kdf) throws Exception {
+        Kdf k = validarKdf(kdf);
         byte[] salt = saltDesdeEmail(email);
         char[] nfc = passwordNfc(password);
-        PBEKeySpec spec = new PBEKeySpec(nfc, salt, PBKDF2_ITERACIONES, 256);
         try {
-            SecretKeyFactory f = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-            return f.generateSecret(spec).getEncoded();
+            if ("argon2id".equals(k.tipo())) {
+                org.bouncycastle.crypto.params.Argon2Parameters par =
+                        new org.bouncycastle.crypto.params.Argon2Parameters.Builder(
+                                org.bouncycastle.crypto.params.Argon2Parameters.ARGON2_id)
+                                .withVersion(org.bouncycastle.crypto.params.Argon2Parameters.ARGON2_VERSION_13)
+                                .withIterations(k.iteraciones())
+                                .withMemoryAsKB(k.memoria())
+                                .withParallelism(k.paralelismo())
+                                .withSalt(salt)
+                                .build();
+                org.bouncycastle.crypto.generators.Argon2BytesGenerator g =
+                        new org.bouncycastle.crypto.generators.Argon2BytesGenerator();
+                g.init(par);
+                byte[] mk = new byte[32];
+                // Bouncy Castle convierte los char[] a UTF-8, igual que WebCrypto.
+                g.generateBytes(nfc, mk);
+                return mk;
+            }
+            PBEKeySpec spec = new PBEKeySpec(nfc, salt, k.iteraciones(), 256);
+            try {
+                SecretKeyFactory f = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+                return f.generateSecret(spec).getEncoded();
+            } finally {
+                spec.clearPassword();
+            }
         } finally {
-            spec.clearPassword();
             if (nfc != password) limpiar(nfc);
         }
     }
@@ -134,7 +229,11 @@ public final class PassrodCripto {
 
     /** Lo ÚNICO que se envía al servidor para autenticarse. */
     public static String authHash(char[] password, String email) throws Exception {
-        byte[] mk = derivarMK(password, email);
+        return authHash(password, email, KDF_PBKDF2);
+    }
+
+    public static String authHash(char[] password, String email, Kdf kdf) throws Exception {
+        byte[] mk = derivarMK(password, email, kdf);
         byte[] ak = derivarAuthKey(mk);
         String salida = Base64.getEncoder().encodeToString(ak);
         limpiar(mk, ak);

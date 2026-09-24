@@ -40,6 +40,12 @@ import {
   aadRecuperacion,
   envolverRecuperacion,
   abrirRecuperacion,
+  KDF_ARGON2ID,
+  KDF_NUEVAS,
+  validarKdf,
+  kdfDesdeServidor,
+  kdfParaServidor,
+  authHash,
 } from '../dist/passrodCripto.js';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
@@ -193,6 +199,39 @@ const sinSesgo = valores.every((v) => Math.abs(v - media) < media * 0.03);
 resultados.push({ nombre: 'generador_de_codigos', ok: formatoOk && sinSesgo,
   obtenido: `formato ${formatoOk}, min ${Math.min(...valores)} max ${Math.max(...valores)}`,
   esperado: `formato true, todos cerca de ${media}` });
+
+// ── v2.3.0: Argon2id y límites del KDF ──────────────────────────────────────
+const A2 = { tipo: 'argon2id', memoria: P.argon2id.m, iteraciones: P.argon2id.t, paralelismo: P.argon2id.p };
+const mkA = await derivarMK(E.password, E.email, A2);
+comprobar('mk_argon2id', b64(mkA));
+comprobar('sk_argon2id', b64(await hkdf(mkA, P.info_enc)));
+comprobar('authkey_argon2id', b64(await hkdf(mkA, P.info_auth)));
+resultados.push({ nombre: 'argon2id_desde_nfd', ok: b64(await derivarMK(E.password_nfd, E.email, A2)) === b64(mkA),
+  obtenido: '-', esperado: 'igual que desde NFC' });
+resultados.push({ nombre: 'kdf_nuevas_es_argon2id_del_banco',
+  ok: JSON.stringify(KDF_NUEVAS) === JSON.stringify(A2) && JSON.stringify(KDF_ARGON2ID) === JSON.stringify(A2),
+  obtenido: JSON.stringify(KDF_NUEVAS), esperado: JSON.stringify(A2) });
+const rechazaKdf = (k) => { try { validarKdf(k); return false; } catch { return true; } };
+const limites = [
+  ['pbkdf2 con 1 iteración', rechazaKdf({ tipo: 'pbkdf2', iteraciones: 1 })],
+  ['pbkdf2 con 599 999', rechazaKdf({ tipo: 'pbkdf2', iteraciones: 599_999 })],
+  ['pbkdf2 con 10^11 (colgaría el cliente)', rechazaKdf({ tipo: 'pbkdf2', iteraciones: 1e11 })],
+  ['argon2id con 1 MiB', rechazaKdf({ tipo: 'argon2id', memoria: 1024, iteraciones: 3, paralelismo: 4 })],
+  ['argon2id con 1 pasada', rechazaKdf({ tipo: 'argon2id', memoria: 65536, iteraciones: 1, paralelismo: 4 })],
+  ['argon2id con 64 GiB', rechazaKdf({ tipo: 'argon2id', memoria: 67_108_864, iteraciones: 3, paralelismo: 4 })],
+  ['un tipo desconocido', rechazaKdf({ tipo: 'md5' })],
+  ['admite pbkdf2 600 000', !rechazaKdf({ tipo: 'pbkdf2', iteraciones: 600_000 })],
+  ['admite el de las cuentas nuevas', !rechazaKdf(KDF_NUEVAS)],
+];
+for (const [t, ok] of limites) resultados.push({ nombre: 'kdf: ' + t, ok, obtenido: String(ok), esperado: 'true' });
+const ida = kdfParaServidor(KDF_NUEVAS);
+resultados.push({ nombre: 'kdf ida y vuelta con el servidor',
+  ok: JSON.stringify(kdfDesdeServidor(ida.kdf_tipo, ida.kdf_params)) === JSON.stringify(KDF_NUEVAS)
+    && kdfDesdeServidor(null, null).tipo === 'pbkdf2'
+    && (() => { try { kdfDesdeServidor('pbkdf2', '{"iteraciones":1}'); return false; } catch { return true; } })(),
+  obtenido: JSON.stringify(ida), esperado: 'ida y vuelta, y rechazo de 1 iteración' });
+resultados.push({ nombre: 'authHash con argon2id = base64(authkey_argon2id)',
+  ok: (await authHash(E.password, E.email, A2)) === esperado['authkey_argon2id'], obtenido: '-', esperado: '-' });
 
 // la AAD debe atar el blob a su ubicación
 let atado = false;

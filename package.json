@@ -1,6 +1,6 @@
 {
   "name": "@solucionesnimrod/passrod-cripto",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Núcleo criptográfico de PassRod v2. Una sola implementación para la web, la extensión de navegador y cualquier cliente TypeScript.",
   "license": "UNLICENSED",
   "private": true,
@@ -23,5 +23,8 @@
   "devDependencies": {
     "@types/node": "^20",
     "typescript": "5.8.3"
+  },
+  "dependencies": {
+    "hash-wasm": "4.12.0"
   }
 }

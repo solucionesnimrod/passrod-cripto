@@ -33,22 +33,51 @@ export declare function saltDesdeEmail(email: string): Promise<Uint8Array>;
  * aquí no existe la trampa de la «i» turca que sí tiene Java.
  */
 export declare function normalizarEmail(email: string): string;
+export type Kdf = {
+    tipo: 'pbkdf2';
+    iteraciones: number;
+} | {
+    tipo: 'argon2id';
+    memoria: number;
+    iteraciones: number;
+    paralelismo: number;
+};
+/** El de las cuentas anteriores a la v2.3.0. */
+export declare const KDF_PBKDF2: Kdf;
+/** El de las cuentas nuevas: 64 MiB, 3 pasadas, 4 hilos (memoria en KiB). */
+export declare const KDF_ARGON2ID: Kdf;
+export declare const KDF_NUEVAS: {
+    tipo: "argon2id";
+    memoria: number;
+    iteraciones: number;
+    paralelismo: number;
+};
+/** Devuelve el KDF si cumple los mínimos y máximos; si no, lanza. */
+export declare function validarKdf(k: Kdf): Kdf;
 /**
- * Clave maestra con PBKDF2-SHA256.
- *
- * Es el algoritmo por defecto porque WebCrypto lo trae nativo, igual que Java y
- * Android. Argon2id resiste mejor el ataque por hardware dedicado, pero en el
- * navegador exige WASM; el campo `kdf_tipo` del usuario existe precisamente
- * para poder cambiarlo sin romper a quien ya está registrado.
+ * El KDF tal como lo guarda el servidor (`kdf_tipo` y `kdf_params`), validado.
+ * Sin datos, el de las cuentas antiguas.
  */
-export declare function derivarMK(password: string, email: string): Promise<Uint8Array>;
+export declare function kdfDesdeServidor(tipo: string | null | undefined, params: string | Record<string, unknown> | null | undefined): Kdf;
+/** Lo que se envía al servidor para que recuerde el KDF de la cuenta. */
+export declare function kdfParaServidor(k: Kdf): {
+    kdf_tipo: string;
+    kdf_params: string;
+};
+/**
+ * Clave maestra: PBKDF2-SHA256 o Argon2id según el KDF de la cuenta.
+ *
+ * Sin KDF se usa PBKDF2 con 600 000 iteraciones, el de las cuentas anteriores a
+ * la v2.3.0, para no cambiar el resultado a quien ya llamaba así.
+ */
+export declare function derivarMK(password: string, email: string, kdf?: Kdf): Promise<Uint8Array>;
 /** HKDF-SHA256 con salt vacío (RFC 5869). */
 export declare function hkdf(ikm: Uint8Array, info: string, largo?: number): Promise<Uint8Array>;
 /** Clave de cifrado: nunca sale del cliente. */
 export declare const derivarSK: (mk: Uint8Array) => Promise<Uint8Array<ArrayBufferLike>>;
 /** Clave de autenticación: su base64 es lo ÚNICO que se envía al servidor. */
 export declare const derivarAuthKey: (mk: Uint8Array) => Promise<Uint8Array<ArrayBufferLike>>;
-export declare function authHash(password: string, email: string): Promise<string>;
+export declare function authHash(password: string, email: string, kdf?: Kdf): Promise<string>;
 /**
  * Datos autenticados asociados: atan el blob a su ubicación exacta.
  *
