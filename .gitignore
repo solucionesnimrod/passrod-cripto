@@ -22,3 +22,5 @@ node_modules/
 # Contrapartida: hay que acordarse de compilar antes de commitear un cambio en
 # typescript/. `npm test` compila y pasa el banco de vectores, asi que basta con
 # ejecutarlo antes de cada commit.
+java/PuenteFirma.java
+typescript/puenteFirma.mjs

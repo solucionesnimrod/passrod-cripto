@@ -29,6 +29,17 @@ import {
   VERSION_ESQUEMA,
   ALG_AES_GCM,
   PBKDF2_ITERACIONES,
+  normalizarEmail,
+  huella,
+  envolverParaUsuario,
+  firmarEnvoltura,
+  verificarEnvoltura,
+  mensajeEnvoltura,
+  normalizarCodigoRecuperacion,
+  nuevoCodigoRecuperacion,
+  aadRecuperacion,
+  envolverRecuperacion,
+  abrirRecuperacion,
 } from '../dist/passrodCripto.js';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
@@ -124,6 +135,64 @@ resultados.push({
   ok: Buffer.compare(Buffer.from(deVuelta), Buffer.from(vk)) === 0,
   obtenido: '(clave recuperada)', esperado: '(igual a la original)',
 });
+
+// ── v2.2.0 ─────────────────────────────────────────────────────────────────
+comprobar('mk_pbkdf2_desde_nfd', b64(await derivarMKpbkdf2(E.password_nfd, E.email)));
+comprobar('email_con_i_normalizado', normalizarEmail(E.email_con_i_nfd));
+comprobar('salt_email_con_i', b64(await saltDesdeEmail(E.email_con_i_nfd)));
+comprobar('huella_publica', await huella(deB64(E.rsa_publica_spki_b64)));
+comprobar('mensaje_envoltura', b64(mensajeEnvoltura(
+  E.firma_envoltura_boveda, E.firma_envoltura_destinatario, E.wrap_asimetrico_b64)));
+const pubSpki = deB64(E.rsa_publica_spki_b64);
+comprobar('verificar_firma_envoltura', (await verificarEnvoltura(pubSpki,
+  E.firma_envoltura_boveda, E.firma_envoltura_destinatario, E.wrap_asimetrico_b64,
+  E.firma_envoltura_b64)) ? 'valida' : 'invalida');
+comprobar('firma_con_otro_destinatario', (await verificarEnvoltura(pubSpki,
+  E.firma_envoltura_boveda, 13, E.wrap_asimetrico_b64, E.firma_envoltura_b64)) ? 'valida' : 'invalida');
+let rechaza = 'NO rechaza';
+try { await envolverParaUsuario(deB64(E.rsa_publica_1024_spki_b64), vk); } catch { rechaza = 'rechaza'; }
+comprobar('rechazar_rsa_1024', rechaza);
+comprobar('codigo_normalizado', normalizarCodigoRecuperacion(E.codigo_tecleado));
+comprobar('aad_recuperacion', b64(aadRecuperacion(E.email)));
+comprobar('recovery_blob_atado', await envolverRecuperacion(E.codigo_tecleado, mk, E.email, nonce));
+
+// Firma propia: la que hace TypeScript la verifica TypeScript, y no vale para otra bóveda
+const miFirma = await firmarEnvoltura(privPkcs8, 7, 12, E.wrap_asimetrico_b64);
+const firmaBuena = await verificarEnvoltura(pubSpki, 7, 12, E.wrap_asimetrico_b64, miFirma);
+const firmaOtra = await verificarEnvoltura(pubSpki, 8, 12, E.wrap_asimetrico_b64, miFirma);
+resultados.push({ nombre: 'firma_propia_ida_y_vuelta', ok: firmaBuena && !firmaOtra,
+  obtenido: `${firmaBuena}/${firmaOtra}`, esperado: 'true/false' });
+
+// Recuperación: abre el blob atado, abre el ANTIGUO (recovery|0|0) y no abre con otro correo
+const atadoAbierto = await abrirRecuperacion(E.codigo_tecleado, esperado['recovery_blob_atado'], E.email);
+// Los clientes siempre han envuelto con el código ya normalizado (con guiones),
+// así que un blob antiguo real es este: código canónico y AAD recovery|0|0.
+const rkCanon = await hkdf(utf8.encode(normalizarCodigoRecuperacion(E.codigo_tecleado)), P.info_recovery);
+const blobAntiguo = await cifrar(rkCanon, mk, construirAAD('recovery', 0, 0));
+const antiguoAbierto = await abrirRecuperacion(E.codigo_tecleado, blobAntiguo, E.email);
+let otroCorreo = 'abre';
+try { await abrirRecuperacion(E.codigo_tecleado, esperado['recovery_blob_atado'], 'otra@ejemplo.ec'); }
+catch { otroCorreo = 'no abre'; }
+resultados.push({ nombre: 'recuperacion_atada_y_antigua',
+  ok: b64(atadoAbierto) === b64(mk) && b64(antiguoAbierto) === b64(mk) && otroCorreo === 'no abre',
+  obtenido: otroCorreo, esperado: 'no abre' });
+
+// El generador: formato, alfabeto y sin sesgo. Con 100 000 códigos el sesgo del
+// módulo 31 (un 12 % más para 8 letras) se ve de sobra; el ruido es del 0,4 %.
+const ALF = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const cuenta = Object.fromEntries([...ALF].map((c) => [c, 0]));
+let formatoOk = true;
+for (let i = 0; i < 100000; i++) {
+  const c = nuevoCodigoRecuperacion();
+  if (!/^([A-Z2-9]{5}-){4}[A-Z2-9]{5}$/.test(c)) formatoOk = false;
+  for (const ch of c.replace(/-/g, '')) { if (!(ch in cuenta)) formatoOk = false; else cuenta[ch]++; }
+}
+const valores = Object.values(cuenta);
+const media = (100000 * 25) / ALF.length;
+const sinSesgo = valores.every((v) => Math.abs(v - media) < media * 0.03);
+resultados.push({ nombre: 'generador_de_codigos', ok: formatoOk && sinSesgo,
+  obtenido: `formato ${formatoOk}, min ${Math.min(...valores)} max ${Math.max(...valores)}`,
+  esperado: `formato true, todos cerca de ${media}` });
 
 // la AAD debe atar el blob a su ubicación
 let atado = false;

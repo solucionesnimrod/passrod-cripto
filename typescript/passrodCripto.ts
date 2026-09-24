@@ -99,10 +99,25 @@ export function limpiar(...buffers: Uint8Array[]): void {
  * contraseña nunca necesita viajar ni esperar a nadie.
  */
 export async function saltDesdeEmail(email: string): Promise<Uint8Array> {
-  const normalizado = email.trim().toLowerCase();
-  const h = await obtenerCripto().subtle.digest('SHA-256', utf8.encode(PREFIJO_SALT + normalizado));
+  const h = await obtenerCripto().subtle.digest(
+    'SHA-256', utf8.encode(PREFIJO_SALT + normalizarEmail(email)));
   return new Uint8Array(h);
 }
+
+/**
+ * El correo tal como entra en la sal: NFC, sin espacios y en minúsculas.
+ *
+ * La NFC importa: macOS e iOS componen los acentos en NFD y Windows en NFC, y
+ * sin normalizar el mismo correo daría dos sales —la misma cuenta no abriría en
+ * los dos equipos—. `toLowerCase` de JavaScript no depende del idioma, así que
+ * aquí no existe la trampa de la «i» turca que sí tiene Java.
+ */
+export function normalizarEmail(email: string): string {
+  return email.normalize('NFC').trim().toLowerCase();
+}
+
+/** La contraseña se deriva siempre en NFC, por el mismo motivo que el correo. */
+const passwordUtf8 = (password: string) => utf8.encode(password.normalize('NFC'));
 
 /**
  * Clave maestra con PBKDF2-SHA256.
@@ -115,7 +130,7 @@ export async function saltDesdeEmail(email: string): Promise<Uint8Array> {
 export async function derivarMK(password: string, email: string): Promise<Uint8Array> {
   const salt = await saltDesdeEmail(email);
   const base = await obtenerCripto().subtle.importKey(
-    'raw', utf8.encode(password), { name: 'PBKDF2' }, false, ['deriveBits']);
+    'raw', passwordUtf8(password), { name: 'PBKDF2' }, false, ['deriveBits']);
   const bits = await obtenerCripto().subtle.deriveBits(
     { name: 'PBKDF2', salt, iterations: PBKDF2_ITERACIONES, hash: 'SHA-256' },
     base, 256);
@@ -250,16 +265,88 @@ export async function generarParDeClaves(): Promise<ParDeClaves> {
   };
 }
 
+/** Por debajo de esto una clave RSA no protege nada: se rechaza al envolver. */
+export const MIN_BITS_RSA = 2048;
+
 /**
  * Envuelve la clave de bóveda para otro usuario, usando su clave pública.
  *
  * Esto es lo que permite compartir sin que el servidor participe: el dueño
  * cifra VK para el invitado y el servidor solo transporta el resultado.
+ *
+ * La clave pública la entrega el servidor, así que se comprueba su tamaño: uno
+ * malicioso podría entregar una de 512 bits, que se factoriza en horas.
  */
 export async function envolverParaUsuario(publicaSpki: Uint8Array,
                                           vk: Uint8Array): Promise<string> {
   const pub = await obtenerCripto().subtle.importKey('spki', publicaSpki, RSA_OAEP, false, ['encrypt']);
+  const bits = (pub.algorithm as RsaHashedKeyAlgorithm).modulusLength;
+  if (!(bits >= MIN_BITS_RSA)) {
+    throw new Error(`Clave pública RSA de ${bits} bits: el mínimo es ${MIN_BITS_RSA}`);
+  }
   return aBase64(new Uint8Array(await obtenerCripto().subtle.encrypt({ name: 'RSA-OAEP' }, pub, vk)));
+}
+
+/**
+ * Huella legible de una clave pública, para compararla por otro canal.
+ *
+ * La clave pública del otro la entrega el servidor; si entregara la suya podría
+ * leer lo compartido. La única defensa es que las dos personas lean esta huella
+ * y comprueben que coincide. Se calcula SIEMPRE sobre la clave recibida: la que
+ * mande el servidor no comprueba nada.
+ *
+ * Diez bytes en cinco grupos: exige una colisión dirigida y se lee por teléfono.
+ */
+export async function huella(publicaSpki: Uint8Array): Promise<string> {
+  const h = new Uint8Array(await obtenerCripto().subtle.digest('SHA-256', publicaSpki));
+  const hex = [...h.slice(0, 10)].map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join('');
+  return (hex.match(/.{4}/g) ?? []).join('-');
+}
+
+// ── Firma de envolturas: RSA-PSS-SHA256 con el mismo par (v2.2.0) ──────────
+//
+// Sin firma, cualquiera con la clave pública de alguien —incluido el servidor—
+// puede envolverle una clave de bóveda que él mismo conoce y hacerla pasar por
+// compartida: lo que la víctima guardase ahí sería legible. Con la firma de
+// quien comparte, el servidor no puede fabricarla, porque no tiene su privada.
+//
+// Se reutiliza el par RSA-OAEP del usuario: OAEP y PSS con la misma clave son
+// seguros juntos (Haber y Pinkas, 2001), y así no hay que repartir, envolver ni
+// re-envolver una segunda clave en el alta, el cambio de contraseña y la
+// recuperación.
+
+const RSA_PSS = { name: 'RSA-PSS', hash: 'SHA-256' } as const;
+const SAL_PSS = 32;
+
+/** Lo que se firma: ata la envoltura a su bóveda y a su destinatario. */
+export function mensajeEnvoltura(idBoveda: string | number, idDestinatario: string | number,
+                                 claveEnvuelta: string): Uint8Array {
+  return utf8.encode(`${PREFIJO_AAD}compartir|${idBoveda}|${idDestinatario}|${claveEnvuelta}`);
+}
+
+export async function firmarEnvoltura(privadaPkcs8: Uint8Array, idBoveda: string | number,
+                                      idDestinatario: string | number,
+                                      claveEnvuelta: string): Promise<string> {
+  const priv = await obtenerCripto().subtle.importKey('pkcs8', privadaPkcs8, RSA_PSS, false, ['sign']);
+  const firma = await obtenerCripto().subtle.sign(
+    { name: 'RSA-PSS', saltLength: SAL_PSS }, priv,
+    mensajeEnvoltura(idBoveda, idDestinatario, claveEnvuelta));
+  return aBase64(new Uint8Array(firma));
+}
+
+/** true solo si la firma es de la privada de `publicaSpki` y para ESA bóveda y ESE destinatario. */
+export async function verificarEnvoltura(publicaSpki: Uint8Array, idBoveda: string | number,
+                                         idDestinatario: string | number, claveEnvuelta: string,
+                                         firmaB64: string): Promise<boolean> {
+  try {
+    const pub = await obtenerCripto().subtle.importKey('spki', publicaSpki, RSA_PSS, false, ['verify']);
+    if ((pub.algorithm as RsaHashedKeyAlgorithm).modulusLength < MIN_BITS_RSA) return false;
+    return await obtenerCripto().subtle.verify(
+      { name: 'RSA-PSS', saltLength: SAL_PSS }, pub, deBase64(firmaB64),
+      mensajeEnvoltura(idBoveda, idDestinatario, claveEnvuelta));
+  } catch {
+    return false;
+  }
 }
 
 /** Abre una clave de bóveda que envolvieron para mí. */
@@ -282,6 +369,66 @@ export const abrirClavePrivada = (sk: Uint8Array, envuelta: string) =>
 
 export const claveDeRecuperacion = (codigo: string) =>
   hkdf(utf8.encode(codigo), INFO_RECOVERY);
+
+/** Sin I, L, O, 0 ni 1: el código se apunta en papel y se confunden al leer. */
+export const ALFABETO_CODIGO = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+/**
+ * Código de recuperación nuevo: 25 caracteres en cinco grupos (~124 bits).
+ *
+ * Vive aquí para que todos los clientes lo generen igual. Se descartan los
+ * bytes que no caben en un múltiplo de 31: con un simple `% 31`, ocho letras
+ * salían un 12 % más a menudo que las demás.
+ */
+export function nuevoCodigoRecuperacion(): string {
+  const limite = 256 - (256 % ALFABETO_CODIGO.length);
+  let salida = '';
+  while (salida.replace(/-/g, '').length < 25) {
+    for (const b of obtenerCripto().getRandomValues(new Uint8Array(32))) {
+      if (b >= limite) continue;
+      const n = salida.replace(/-/g, '').length;
+      if (n === 25) break;
+      if (n > 0 && n % 5 === 0) salida += '-';
+      salida += ALFABETO_CODIGO[b % ALFABETO_CODIGO.length];
+    }
+  }
+  return salida;
+}
+
+/** Forma canónica de un código tecleado: sin espacios ni guiones, en grupos de 5. */
+export function normalizarCodigoRecuperacion(codigo: string): string {
+  const limpio = codigo.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  return (limpio.match(/.{1,5}/g) ?? []).join('-');
+}
+
+/** AAD del blob de recuperación: lo ata a SU cuenta (antes era recovery|0|0 para todas). */
+export const aadRecuperacion = (email: string) =>
+  construirAAD('recovery', normalizarEmail(email), 0);
+
+/** Envuelve MK con el código, atada al correo. El código se normaliza aquí. */
+export async function envolverRecuperacion(codigo: string, mk: Uint8Array, email: string,
+                                           nonce?: Uint8Array): Promise<string> {
+  const rk = await claveDeRecuperacion(normalizarCodigoRecuperacion(codigo));
+  const blob = await cifrar(rk, mk, aadRecuperacion(email), nonce);
+  limpiar(rk);
+  return blob;
+}
+
+/**
+ * Abre el blob de recuperación. Acepta también el formato anterior a la v2.2.0
+ * (AAD `recovery|0|0`), para no dejar sin salida a quien lo guardó antes.
+ */
+export async function abrirRecuperacion(codigo: string, blob: string,
+                                        email: string): Promise<Uint8Array> {
+  const rk = await claveDeRecuperacion(normalizarCodigoRecuperacion(codigo));
+  try {
+    return await descifrar(rk, blob, aadRecuperacion(email));
+  } catch {
+    return await descifrar(rk, blob, construirAAD('recovery', 0, 0));
+  } finally {
+    limpiar(rk);
+  }
+}
 
 export async function envolverParaRecuperacion(codigo: string, mk: Uint8Array,
                                                nonce?: Uint8Array): Promise<string> {

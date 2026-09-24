@@ -62,6 +62,16 @@ cod, salida = correr([JAVA, "-Dfile.encoding=UTF-8", "-cp", ".", "VerificarVecto
 print("   " + [l for l in salida.strip().splitlines() if l.strip()][-1])
 fallos += (cod != 0)
 
+# Con el equipo en turco, toLowerCase() sin Locale.ROOT convierte la I en una
+# i sin punto: la sal cambia y el usuario no puede entrar. Se repite el banco
+# con ese idioma para que no vuelva a pasar.
+print()
+print("-- Java con el equipo en turco --")
+cod, salida = correr([JAVA, "-Dfile.encoding=UTF-8", "-Duser.language=tr", "-Duser.country=TR",
+                      "-cp", ".", "VerificarVectores"], os.path.join(AQUI, "java"))
+print("   " + [l for l in salida.strip().splitlines() if l.strip()][-1])
+fallos += (cod != 0)
+
 
 # ── 2. Interoperabilidad cruzada ────────────────────────────────────────────
 titulo("2. Interoperabilidad cruzada (nonces ALEATORIOS)")
@@ -254,7 +264,71 @@ ok = abierta is not None and base64.b64decode(abierta) == vk_compartida
 print(f"  {'PASA ' if ok else 'FALLA'}  Java abre su clave privada con SK y con ella la boveda compartida")
 fallos += (not ok)
 
-for tmp in (os.path.join(AQUI, "java", "PuenteRsa.java"),
+# ── 4. Firmas de envoltura entre plataformas ────────────────────────────────
+titulo("4. Firma de la envoltura: firma una plataforma, verifica otra")
+
+from generar_vectores import firmar_envoltura, verificar_envoltura
+
+puente_firma_java = r"""
+import com.solucionesnimrod.passrod.cripto.PassrodCripto;
+import java.util.Base64;
+public class PuenteFirma {
+  public static void main(String[] a) throws Exception {
+    byte[] priv = Base64.getDecoder().decode(a[0]);
+    byte[] pub = Base64.getDecoder().decode(a[1]);
+    System.out.println("FIRMA:" + PassrodCripto.firmarEnvoltura(priv, 31, 44, a[2]));
+    System.out.println("VERIFICA:" + PassrodCripto.verificarEnvoltura(pub, 31, 44, a[2], a[3]));
+  }
+}
+"""
+with open(os.path.join(AQUI, "java", "PuenteFirma.java"), "w", encoding="utf-8") as f:
+    f.write(puente_firma_java)
+correr([JAVAC, "-encoding", "UTF-8", "-cp", ".", "-d", ".", "PuenteFirma.java"],
+       os.path.join(AQUI, "java"))
+env_ref = b64(os.urandom(256))
+firma_py = b64(firmar_envoltura(priv, 31, 44, env_ref))
+cod, salida = correr([JAVA, "-cp", ".", "PuenteFirma", b64(priv_pkcs8), b64(pub_spki), env_ref, firma_py],
+                     os.path.join(AQUI, "java"))
+firma_java = next((l[6:].strip() for l in salida.splitlines() if l.startswith("FIRMA:")), "")
+java_verifica_py = "VERIFICA:true" in salida
+ok = java_verifica_py
+print(f"  {'PASA ' if ok else 'FALLA'}  Java verifica la firma de Python")
+fallos += (not ok)
+try:
+    ok = verificar_envoltura(priv.public_key(), 31, 44, env_ref, base64.b64decode(firma_java))
+except Exception as e:
+    ok = False
+    print("     error:", e)
+print(f"  {'PASA ' if ok else 'FALLA'}  Python verifica la firma de Java")
+fallos += (not ok)
+
+puente_firma_ts = r"""
+import { firmarEnvoltura, verificarEnvoltura } from '../dist/passrodCripto.js';
+const [privB64, pubB64, env, firmaJava] = process.argv.slice(2);
+const deB64 = (s) => new Uint8Array(Buffer.from(s, 'base64'));
+console.log('VERIFICA:' + await verificarEnvoltura(deB64(pubB64), 31, 44, env, firmaJava));
+console.log('OTRA:' + await verificarEnvoltura(deB64(pubB64), 31, 45, env, firmaJava));
+console.log('FIRMA:' + await firmarEnvoltura(deB64(privB64), 31, 44, env));
+"""
+with open(os.path.join(AQUI, "typescript", "puenteFirma.mjs"), "w", encoding="utf-8") as f:
+    f.write(puente_firma_ts)
+cod, salida = correr(["node", "puenteFirma.mjs", b64(priv_pkcs8), b64(pub_spki), env_ref, firma_java],
+                     os.path.join(AQUI, "typescript"))
+ok = "VERIFICA:true" in salida and "OTRA:false" in salida
+print(f"  {'PASA ' if ok else 'FALLA'}  TypeScript verifica la firma de Java (y no la acepta para otro destinatario)")
+fallos += (not ok)
+firma_ts = next((l[6:].strip() for l in salida.splitlines() if l.startswith("FIRMA:")), "")
+try:
+    ok = verificar_envoltura(priv.public_key(), 31, 44, env_ref, base64.b64decode(firma_ts))
+except Exception as e:
+    ok = False
+    print("     error:", e)
+print(f"  {'PASA ' if ok else 'FALLA'}  Python verifica la firma de TypeScript")
+fallos += (not ok)
+
+for tmp in (os.path.join(AQUI, "java", "PuenteFirma.java"),
+            os.path.join(AQUI, "typescript", "puenteFirma.mjs"),
+            os.path.join(AQUI, "java", "PuenteRsa.java"),
             os.path.join(AQUI, "java", "AbrirRsa.java"),
             os.path.join(AQUI, "typescript", "puenteRsa.mjs"),
             os.path.join(AQUI, "java", "Puente.java"),

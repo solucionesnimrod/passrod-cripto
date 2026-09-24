@@ -56,8 +56,8 @@ Comprueba dos cosas distintas:
 ## El esquema, en corto
 
 ```
-salt      = SHA-256("passrod.v2|" + email en minúsculas y sin espacios)
-MK        = PBKDF2-SHA256(password, salt, 600 000 iteraciones, 32 B)
+salt      = SHA-256("passrod.v2|" + NFC(email) sin espacios y en minúsculas)
+MK        = PBKDF2-SHA256(NFC(password), salt, 600 000 iteraciones, 32 B)
 SK        = HKDF-SHA256(MK, info="passrod.v2.enc")     ← nunca sale del cliente
 AuthKey   = HKDF-SHA256(MK, info="passrod.v2.auth")    ← su base64 es lo único
                                                           que ve el servidor
@@ -96,6 +96,42 @@ borrarla y rotar la clave de bóveda.
 
 Se eligió RSA y no X25519 porque WebCrypto, Java y Android lo traen de serie;
 X25519 en WebCrypto es reciente y de disponibilidad desigual.
+
+### Desde la v2.2.0: firma, tamaño mínimo y huella
+
+```
+firma  = RSA-PSS-SHA256(priv_de_quien_comparte,
+                        "passrod.v2|compartir|" + id_bóveda + "|" + id_destinatario + "|" + wrap_asim)
+         MGF1-SHA256, sal de 32 bytes, con el MISMO par RSA del usuario
+huella = SHA-256(spki)[0:10] en grupos de 4 hex  (B65A-DD1F-068D-CB68-B2CA)
+```
+
+- **Sin firma**, cualquiera con la clave pública de alguien —incluido el
+  servidor— podía envolverle una clave de bóveda que él mismo conoce y hacerla
+  pasar por compartida: lo que la víctima guardase ahí sería legible. Con la
+  firma de quien comparte, el servidor no puede fabricarla. Reutilizar el par
+  RSA-OAEP para PSS es seguro (Haber y Pinkas, 2001) y evita repartir y
+  re-envolver una segunda clave.
+- `envolverParaUsuario` **rechaza claves de menos de 2048 bits**: la pública del
+  invitado la entrega el servidor.
+- La huella vive aquí (antes la calculaba cada cliente por su cuenta).
+
+### Normalización (v2.2.0)
+
+Contraseña y correo se pasan a **NFC** antes de derivar: macOS compone los
+acentos en NFD y Windows en NFC, y sin normalizar la misma cuenta no abría en
+los dos. Java usa `toLowerCase(Locale.ROOT)`: con el equipo en turco, la «I»
+pasaba a «ı» y la sal cambiaba. `verificar_todo.py` repite el banco de Java con
+`-Duser.language=tr`. Las entradas que ya estaban en NFC —todas las anteriores—
+dan exactamente los mismos bytes que antes.
+
+### Recuperación (v2.2.0)
+
+`nuevoCodigoRecuperacion()` genera el código aquí (25 caracteres del alfabeto
+sin I, L, O, 0, 1; sin el sesgo del `% 31` que tenía la web), y
+`envolverRecuperacion` / `abrirRecuperacion` normalizan el código y atan el blob
+al correo con la AAD `recovery|<correo>|0`. `abrirRecuperacion` sigue abriendo
+los blobs anteriores (`recovery|0|0`).
 
 Dos cosas que costaron y conviene no repetir:
 
@@ -139,10 +175,8 @@ ya están generados y esperando.
 
 - **Kotlin/Android**: la app móvil aún no existe. `PassrodCripto.java` funciona
   tal cual en Android (misma API de JVM), así que servirá de punto de partida.
-- Integrar en `visual-gestion-claves` y `desktop-passrod`, que hoy siguen
-  usando el esquema v1 con cifrado en el servidor. Esa es la Fase 4.
-- Adaptar las lambdas de compartir (`invitar_usuario`, `aceptar_invitacion`)
-  para que transporten la clave envuelta en vez de participar en el cifrado.
+- El escritorio lleva una COPIA de `PassrodCripto.java`: al cambiar la de aquí
+  hay que copiarla allí (`desktop-passrod/src/main/java/.../cripto/`).
 
 ## Aviso sobre `par_rsa_pruebas.pem`
 

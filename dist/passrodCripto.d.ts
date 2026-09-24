@@ -25,6 +25,15 @@ export declare function limpiar(...buffers: Uint8Array[]): void;
  */
 export declare function saltDesdeEmail(email: string): Promise<Uint8Array>;
 /**
+ * El correo tal como entra en la sal: NFC, sin espacios y en minúsculas.
+ *
+ * La NFC importa: macOS e iOS componen los acentos en NFD y Windows en NFC, y
+ * sin normalizar el mismo correo daría dos sales —la misma cuenta no abriría en
+ * los dos equipos—. `toLowerCase` de JavaScript no depende del idioma, así que
+ * aquí no existe la trampa de la «i» turca que sí tiene Java.
+ */
+export declare function normalizarEmail(email: string): string;
+/**
  * Clave maestra con PBKDF2-SHA256.
  *
  * Es el algoritmo por defecto porque WebCrypto lo trae nativo, igual que Java y
@@ -63,19 +72,61 @@ export interface ParDeClaves {
 }
 /** Par de claves del usuario. Se genera una vez, en el registro. */
 export declare function generarParDeClaves(): Promise<ParDeClaves>;
+/** Por debajo de esto una clave RSA no protege nada: se rechaza al envolver. */
+export declare const MIN_BITS_RSA = 2048;
 /**
  * Envuelve la clave de bóveda para otro usuario, usando su clave pública.
  *
  * Esto es lo que permite compartir sin que el servidor participe: el dueño
  * cifra VK para el invitado y el servidor solo transporta el resultado.
+ *
+ * La clave pública la entrega el servidor, así que se comprueba su tamaño: uno
+ * malicioso podría entregar una de 512 bits, que se factoriza en horas.
  */
 export declare function envolverParaUsuario(publicaSpki: Uint8Array, vk: Uint8Array): Promise<string>;
+/**
+ * Huella legible de una clave pública, para compararla por otro canal.
+ *
+ * La clave pública del otro la entrega el servidor; si entregara la suya podría
+ * leer lo compartido. La única defensa es que las dos personas lean esta huella
+ * y comprueben que coincide. Se calcula SIEMPRE sobre la clave recibida: la que
+ * mande el servidor no comprueba nada.
+ *
+ * Diez bytes en cinco grupos: exige una colisión dirigida y se lee por teléfono.
+ */
+export declare function huella(publicaSpki: Uint8Array): Promise<string>;
+/** Lo que se firma: ata la envoltura a su bóveda y a su destinatario. */
+export declare function mensajeEnvoltura(idBoveda: string | number, idDestinatario: string | number, claveEnvuelta: string): Uint8Array;
+export declare function firmarEnvoltura(privadaPkcs8: Uint8Array, idBoveda: string | number, idDestinatario: string | number, claveEnvuelta: string): Promise<string>;
+/** true solo si la firma es de la privada de `publicaSpki` y para ESA bóveda y ESE destinatario. */
+export declare function verificarEnvoltura(publicaSpki: Uint8Array, idBoveda: string | number, idDestinatario: string | number, claveEnvuelta: string, firmaB64: string): Promise<boolean>;
 /** Abre una clave de bóveda que envolvieron para mí. */
 export declare function abrirConPrivada(privadaPkcs8: Uint8Array, envuelta: string): Promise<Uint8Array>;
 /** La privada nunca llega al servidor sin envolver. */
 export declare const envolverClavePrivada: (sk: Uint8Array, privadaPkcs8: Uint8Array, nonce?: Uint8Array) => Promise<string>;
 export declare const abrirClavePrivada: (sk: Uint8Array, envuelta: string) => Promise<Uint8Array<ArrayBufferLike>>;
 export declare const claveDeRecuperacion: (codigo: string) => Promise<Uint8Array<ArrayBufferLike>>;
+/** Sin I, L, O, 0 ni 1: el código se apunta en papel y se confunden al leer. */
+export declare const ALFABETO_CODIGO = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+/**
+ * Código de recuperación nuevo: 25 caracteres en cinco grupos (~124 bits).
+ *
+ * Vive aquí para que todos los clientes lo generen igual. Se descartan los
+ * bytes que no caben en un múltiplo de 31: con un simple `% 31`, ocho letras
+ * salían un 12 % más a menudo que las demás.
+ */
+export declare function nuevoCodigoRecuperacion(): string;
+/** Forma canónica de un código tecleado: sin espacios ni guiones, en grupos de 5. */
+export declare function normalizarCodigoRecuperacion(codigo: string): string;
+/** AAD del blob de recuperación: lo ata a SU cuenta (antes era recovery|0|0 para todas). */
+export declare const aadRecuperacion: (email: string) => Uint8Array<ArrayBufferLike>;
+/** Envuelve MK con el código, atada al correo. El código se normaliza aquí. */
+export declare function envolverRecuperacion(codigo: string, mk: Uint8Array, email: string, nonce?: Uint8Array): Promise<string>;
+/**
+ * Abre el blob de recuperación. Acepta también el formato anterior a la v2.2.0
+ * (AAD `recovery|0|0`), para no dejar sin salida a quien lo guardó antes.
+ */
+export declare function abrirRecuperacion(codigo: string, blob: string, email: string): Promise<Uint8Array>;
 export declare function envolverParaRecuperacion(codigo: string, mk: Uint8Array, nonce?: Uint8Array): Promise<string>;
 export declare function recuperarMK(codigo: string, blob: string): Promise<Uint8Array>;
 export * from './totp.js';

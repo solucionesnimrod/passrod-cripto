@@ -17,6 +17,7 @@ import hashlib
 import hmac
 import json
 import os
+import unicodedata
 
 from argon2.low_level import Type, hash_secret_raw
 from cryptography.hazmat.primitives import hashes, serialization
@@ -43,15 +44,32 @@ def b64(x: bytes) -> str:
 
 # ── Derivacion ──────────────────────────────────────────────────────────────
 
+def nfc(texto: str) -> str:
+    return unicodedata.normalize("NFC", texto)
+
+
+def normalizar_email(email: str) -> str:
+    """NFC, sin espacios y en minusculas (independiente del idioma del equipo).
+
+    Sin la NFC, un correo con tilde escrito en macOS (que compone en NFD) y en
+    Windows (NFC) daria dos sales distintas: la misma cuenta no abriria."""
+    return nfc(email).strip().lower()
+
+
+def password_utf8(password: str) -> bytes:
+    """La contrasena se normaliza a NFC antes de derivar, por el mismo motivo."""
+    return nfc(password).encode("utf-8")
+
+
 def salt_de(email: str) -> bytes:
     """El salt se deriva del correo, no de un aleatorio del servidor: asi el
     cliente puede derivar MK antes de la primera peticion."""
-    return hashlib.sha256((PREFIJO_SALT + email.strip().lower()).encode()).digest()
+    return hashlib.sha256((PREFIJO_SALT + normalizar_email(email)).encode()).digest()
 
 
 def derivar_mk_argon2(password: str, email: str) -> bytes:
     return hash_secret_raw(
-        secret=password.encode("utf-8"),
+        secret=password_utf8(password),
         salt=salt_de(email),
         time_cost=ARGON2["t"],
         memory_cost=ARGON2["m"],
@@ -62,7 +80,7 @@ def derivar_mk_argon2(password: str, email: str) -> bytes:
 
 def derivar_mk_pbkdf2(password: str, email: str) -> bytes:
     """Alternativa nativa en las cuatro plataformas, sin dependencias."""
-    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"),
+    return hashlib.pbkdf2_hmac("sha256", password_utf8(password),
                                salt_de(email), PBKDF2_ITER, 32)
 
 
@@ -118,6 +136,57 @@ def abrir_asimetrico(priv, envuelta: bytes) -> bytes:
     return priv.decrypt(envuelta, OAEP)
 
 
+# -- Firma de envolturas: RSA-PSS-SHA256 con el MISMO par del usuario --------
+#
+# Sin firma, cualquiera con la clave publica de alguien -incluido el servidor-
+# puede envolverle una clave de boveda que el mismo conoce y hacerla pasar por
+# compartida. Firmar con la privada de quien comparte lo impide: el servidor no
+# la tiene. Se reutiliza el par RSA-OAEP: OAEP y PSS con la misma clave son
+# seguros juntos (Haber y Pinkas, 2001) y asi no hay que repartir otra clave.
+
+PSS = padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=32)
+MIN_BITS_RSA = 2048
+
+
+def mensaje_envoltura(id_boveda, id_destinatario, clave_envuelta: str) -> bytes:
+    return f"{PREFIJO_AAD}compartir|{id_boveda}|{id_destinatario}|{clave_envuelta}".encode()
+
+
+def firmar_envoltura(priv, id_boveda, id_destinatario, clave_envuelta: str) -> bytes:
+    return priv.sign(mensaje_envoltura(id_boveda, id_destinatario, clave_envuelta),
+                     PSS, hashes.SHA256())
+
+
+def verificar_envoltura(pub, id_boveda, id_destinatario, clave_envuelta: str,
+                        firma: bytes) -> bool:
+    try:
+        pub.verify(firma, mensaje_envoltura(id_boveda, id_destinatario, clave_envuelta),
+                   PSS, hashes.SHA256())
+        return True
+    except Exception:
+        return False
+
+
+def huella(pub_spki: bytes) -> str:
+    """10 bytes de SHA-256 en cinco grupos: se lee por telefono."""
+    h = hashlib.sha256(pub_spki).digest()[:10].hex().upper()
+    return "-".join(h[i:i + 4] for i in range(0, 20, 4))
+
+
+# -- Codigo de recuperacion --------------------------------------------------
+ALFABETO_CODIGO = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"   # sin I, L, O, 0, 1
+
+
+def normalizar_codigo(codigo: str) -> str:
+    limpio = "".join(c for c in codigo if c.isascii() and c.isalnum()).upper()
+    return "-".join(limpio[i:i + 5] for i in range(0, len(limpio), 5))
+
+
+def aad_recuperacion(email: str) -> bytes:
+    """Ata el blob a su cuenta. Antes era recovery|0|0 para todas."""
+    return aad_de("recovery", normalizar_email(email), 0)
+
+
 def descifrar(clave: bytes, blob: str, aad: bytes) -> bytes:
     crudo = base64.b64decode(blob)
     ver, alg = crudo[0], crudo[1]
@@ -160,7 +229,7 @@ def construir():
         "entradas": {
             "password": password,
             "email": email,
-            "email_normalizado": email.strip().lower(),
+            "email_normalizado": normalizar_email(email),
             "nonce_hex": nonce.hex(),
             "clave_boveda_hex": vk.hex(),
             "codigo_recuperacion": codigo_recuperacion,
@@ -246,6 +315,56 @@ def construir():
     vectores["entradas"]["wrap_asimetrico_b64"] = b64(envuelta)
     caso("abrir_wrap_asimetrico", b64(vk),
          "descifrar entradas.wrap_asimetrico_b64 con la privada debe dar la clave de boveda")
+
+    # -- v2.2.0 --------------------------------------------------------------
+    # Normalizacion: la misma contrasena en NFD (como la compone macOS) debe
+    # dar la MISMA clave maestra, y un correo con I mayuscula y tildes en NFD la
+    # misma sal que su forma NFC (en Java, con cualquier idioma del equipo).
+    password_nfd = unicodedata.normalize("NFD", password)
+    assert password_nfd != password
+    vectores["entradas"]["password_nfd"] = password_nfd
+    caso("mk_pbkdf2_desde_nfd", b64(derivar_mk_pbkdf2(password_nfd, email)),
+         "la contrasena en NFD debe dar la misma MK que en NFC (igual a mk_pbkdf2)")
+    email_i = unicodedata.normalize("NFD", "  IVÁN.DÍAZ@Ejemplo.EC ")
+    vectores["entradas"]["email_con_i_nfd"] = email_i
+    caso("email_con_i_normalizado", normalizar_email(email_i),
+         "NFC + trim + minusculas SIN idioma: la I da i, nunca la i sin punto turca")
+    caso("salt_email_con_i", b64(salt_de(email_i)), "sal del correo anterior")
+
+    # Huella de la clave publica de pruebas
+    caso("huella_publica", huella(pub_spki), "10 bytes de SHA-256(SPKI) en grupos de 4 hex")
+
+    # Firma de la envoltura (PSS es aleatorio: se verifica, no se compara)
+    firma = firmar_envoltura(priv, 7, 12, b64(envuelta))
+    vectores["entradas"]["firma_envoltura_b64"] = b64(firma)
+    vectores["entradas"]["firma_envoltura_boveda"] = 7
+    vectores["entradas"]["firma_envoltura_destinatario"] = 12
+    caso("mensaje_envoltura", b64(mensaje_envoltura(7, 12, b64(envuelta))),
+         "passrod.v2|compartir|7|12|<clave_envuelta en base64>")
+    caso("verificar_firma_envoltura",
+         "valida" if verificar_envoltura(pub, 7, 12, b64(envuelta), firma) else "invalida",
+         "la firma de entradas.firma_envoltura_b64 debe verificar con la publica")
+    caso("firma_con_otro_destinatario",
+         "valida" if verificar_envoltura(pub, 7, 13, b64(envuelta), firma) else "invalida",
+         "la misma firma para el destinatario 13 debe ser invalida")
+
+    # RSA de 1024 bits: debe rechazarse al envolver
+    corta = rsa.generate_private_key(public_exponent=65537, key_size=1024).public_key()
+    vectores["entradas"]["rsa_publica_1024_spki_b64"] = b64(corta.public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo))
+    caso("rechazar_rsa_1024", "rechaza", "envolver para una publica de 1024 bits debe fallar")
+
+    # Codigo de recuperacion: forma canonica y blob atado al correo
+    tecleado = "abcde fghjk-mnpqr  stuvw xyz23"
+    vectores["entradas"]["codigo_tecleado"] = tecleado
+    codigo_canon = normalizar_codigo(tecleado)
+    caso("codigo_normalizado", codigo_canon,
+         "sin espacios ni guiones, en mayusculas y en grupos de 5")
+    rk2 = hkdf(codigo_canon.encode(), INFO_RECOVERY)
+    caso("aad_recuperacion", b64(aad_recuperacion(email)),
+         "passrod.v2|recovery|<correo normalizado>|0")
+    caso("recovery_blob_atado", cifrar(rk2, mk_pbkdf2, aad_recuperacion(email), nonce),
+         "MK envuelta con la clave del codigo canonico y AAD atada al correo")
 
     # comprobacion negativa: una AAD distinta debe hacer fallar el descifrado
     try:

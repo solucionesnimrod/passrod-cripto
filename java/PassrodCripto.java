@@ -11,8 +11,11 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.nio.CharBuffer;
+import java.text.Normalizer;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Locale;
 
 /**
  * Núcleo criptográfico de PassRod v2 — implementación Java.
@@ -51,9 +54,29 @@ public final class PassrodCripto {
      * pueda calcular la clave maestra ANTES de la primera petición.
      */
     public static byte[] saltDesdeEmail(String email) throws Exception {
-        String normalizado = email.trim().toLowerCase();
         return MessageDigest.getInstance("SHA-256")
-                .digest((PREFIJO_SALT + normalizado).getBytes(StandardCharsets.UTF_8));
+                .digest((PREFIJO_SALT + normalizarEmail(email)).getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * El correo tal como entra en la sal: NFC, sin espacios y en minúsculas.
+     *
+     * {@code Locale.ROOT} es imprescindible: con el equipo en turco,
+     * {@code toLowerCase()} convierte «I» en «ı» (sin punto), la sal cambia y el
+     * usuario no puede entrar ni abrir nada. La NFC, porque macOS compone los
+     * acentos en NFD y Windows en NFC.
+     */
+    public static String normalizarEmail(String email) {
+        return Normalizer.normalize(email, Normalizer.Form.NFC).trim().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * La contraseña en NFC. Si ya lo está —lo normal— se usa el mismo array y
+     * no se crea ninguna copia; si no, la copia normalizada la limpia quien llama.
+     */
+    private static char[] passwordNfc(char[] password) {
+        if (Normalizer.isNormalized(CharBuffer.wrap(password), Normalizer.Form.NFC)) return password;
+        return Normalizer.normalize(CharBuffer.wrap(password), Normalizer.Form.NFC).toCharArray();
     }
 
     /**
@@ -66,12 +89,14 @@ public final class PassrodCripto {
      */
     public static byte[] derivarMK(char[] password, String email) throws Exception {
         byte[] salt = saltDesdeEmail(email);
-        PBEKeySpec spec = new PBEKeySpec(password, salt, PBKDF2_ITERACIONES, 256);
+        char[] nfc = passwordNfc(password);
+        PBEKeySpec spec = new PBEKeySpec(nfc, salt, PBKDF2_ITERACIONES, 256);
         try {
             SecretKeyFactory f = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
             return f.generateSecret(spec).getEncoded();
         } finally {
             spec.clearPassword();
+            if (nfc != password) limpiar(nfc);
         }
     }
 
@@ -197,6 +222,23 @@ public final class PassrodCripto {
     }
 
     /** Clave de bóveda nueva. Aleatoria de verdad: nunca derivarla de nada. */
+    /**
+     * Cifra el nombre y la descripción de una bóveda con su propia clave.
+     *
+     * El AAD no lleva el id porque al crear la bóveda todavía no existe: lo
+     * asigna el servidor. No hace falta, porque el blob va cifrado con la clave
+     * de ESA bóveda; moverlo a otra haría que no se abriera.
+     */
+    public static String cifrarBoveda(byte[] vk, String json, byte[] nonce) throws Exception {
+        return cifrar(vk, json.getBytes(StandardCharsets.UTF_8),
+                      construirAAD("boveda", 0, 0), nonce);
+    }
+
+    public static String descifrarBoveda(byte[] vk, String blob) throws Exception {
+        return new String(descifrar(vk, blob, construirAAD("boveda", 0, 0)),
+                          StandardCharsets.UTF_8);
+    }
+
     public static byte[] nuevaClaveBoveda() {
         byte[] vk = new byte[32];
         AZAR.nextBytes(vk);
@@ -238,11 +280,100 @@ public final class PassrodCripto {
      * VK para el invitado y el servidor solo transporta el resultado.
      */
     public static String envolverParaUsuario(byte[] publicaSpki, byte[] vk) throws Exception {
-        java.security.PublicKey pub = java.security.KeyFactory.getInstance("RSA")
-                .generatePublic(new java.security.spec.X509EncodedKeySpec(publicaSpki));
+        java.security.PublicKey pub = publicaRsa(publicaSpki);
         Cipher c = Cipher.getInstance(RSA_OAEP);
         c.init(Cipher.ENCRYPT_MODE, pub, parametrosOaep());
         return Base64.getEncoder().encodeToString(c.doFinal(vk));
+    }
+
+    /** Por debajo de esto una clave RSA no protege nada: se rechaza. */
+    public static final int MIN_BITS_RSA = 2048;
+
+    /**
+     * Importa una clave pública RSA comprobando su tamaño. La entrega el
+     * servidor: uno malicioso podría mandar una de 512 bits, que se factoriza.
+     */
+    private static java.security.interfaces.RSAPublicKey publicaRsa(byte[] publicaSpki)
+            throws Exception {
+        java.security.interfaces.RSAPublicKey pub =
+                (java.security.interfaces.RSAPublicKey) java.security.KeyFactory.getInstance("RSA")
+                        .generatePublic(new java.security.spec.X509EncodedKeySpec(publicaSpki));
+        int bits = pub.getModulus().bitLength();
+        if (bits < MIN_BITS_RSA) {
+            throw new java.security.InvalidKeyException(
+                    "Clave pública RSA de " + bits + " bits: el mínimo es " + MIN_BITS_RSA);
+        }
+        return pub;
+    }
+
+    // ── Firma de envolturas: RSA-PSS-SHA256 con el mismo par (v2.2.0) ───────
+    //
+    // Sin firma, cualquiera con la clave pública de alguien —incluido el
+    // servidor— puede envolverle una clave de bóveda que él mismo conoce y
+    // hacerla pasar por compartida. Con la firma de quien comparte, el servidor
+    // no puede fabricarla. Se reutiliza el par RSA-OAEP: OAEP y PSS con la misma
+    // clave son seguros juntos (Haber y Pinkas, 2001).
+
+    private static java.security.spec.PSSParameterSpec parametrosPss() {
+        return new java.security.spec.PSSParameterSpec(
+                "SHA-256", "MGF1", java.security.spec.MGF1ParameterSpec.SHA256, 32, 1);
+    }
+
+    /** Lo que se firma: ata la envoltura a su bóveda y a su destinatario. */
+    public static byte[] mensajeEnvoltura(Object idBoveda, Object idDestinatario,
+                                          String claveEnvuelta) {
+        return (PREFIJO_AAD + "compartir|" + idBoveda + "|" + idDestinatario + "|" + claveEnvuelta)
+                .getBytes(StandardCharsets.UTF_8);
+    }
+
+    public static String firmarEnvoltura(byte[] privadaPkcs8, Object idBoveda,
+                                         Object idDestinatario, String claveEnvuelta)
+            throws Exception {
+        java.security.PrivateKey priv = java.security.KeyFactory.getInstance("RSA")
+                .generatePrivate(new java.security.spec.PKCS8EncodedKeySpec(privadaPkcs8));
+        java.security.Signature f = java.security.Signature.getInstance("RSASSA-PSS");
+        f.setParameter(parametrosPss());
+        f.initSign(priv, AZAR);
+        f.update(mensajeEnvoltura(idBoveda, idDestinatario, claveEnvuelta));
+        return Base64.getEncoder().encodeToString(f.sign());
+    }
+
+    /** true solo si la firma es de la privada de {@code publicaSpki}, para ESA bóveda y ESE destinatario. */
+    public static boolean verificarEnvoltura(byte[] publicaSpki, Object idBoveda,
+                                             Object idDestinatario, String claveEnvuelta,
+                                             String firmaB64) {
+        try {
+            java.security.Signature f = java.security.Signature.getInstance("RSASSA-PSS");
+            f.setParameter(parametrosPss());
+            f.initVerify(publicaRsa(publicaSpki));
+            f.update(mensajeEnvoltura(idBoveda, idDestinatario, claveEnvuelta));
+            return f.verify(Base64.getDecoder().decode(firmaB64));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Huella legible de una clave pública, para compararla por otro canal.
+     *
+     * La clave pública del otro la entrega el servidor; si entregara la suya
+     * podría leer lo compartido. La única defensa es que las dos personas lean
+     * esta huella y comprueben que coincide. Se calcula SIEMPRE sobre la clave
+     * recibida. Diez bytes en cinco grupos: se lee por teléfono.
+     */
+    public static String huella(byte[] publicaSpki) throws Exception {
+        byte[] h = MessageDigest.getInstance("SHA-256").digest(publicaSpki);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 10; i++) {
+            if (i > 0 && i % 2 == 0) sb.append('-');
+            sb.append(String.format(Locale.ROOT, "%02X", h[i]));
+        }
+        return sb.toString();
+    }
+
+    /** Huella de una clave pública en base64, tal como llega del servidor. */
+    public static String huellaDe(String publicaBase64) throws Exception {
+        return huella(Base64.getDecoder().decode(publicaBase64));
     }
 
     /** Abre una clave de bóveda que envolvieron para mí. */
@@ -297,6 +428,62 @@ public final class PassrodCripto {
         byte[] mk = descifrar(rk, blob, construirAAD("recovery", 0, 0));
         limpiar(rk);
         return mk;
+    }
+
+    /** Sin I, L, O, 0 ni 1: el código se apunta en papel y se confunden al leer. */
+    public static final String ALFABETO_CODIGO = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+    /** Código de recuperación nuevo: 25 caracteres en cinco grupos (~124 bits). */
+    public static String nuevoCodigoRecuperacion() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 25; i++) {
+            if (i > 0 && i % 5 == 0) sb.append('-');
+            // nextInt(n) ya es uniforme: SecureRandom descarta por dentro.
+            sb.append(ALFABETO_CODIGO.charAt(AZAR.nextInt(ALFABETO_CODIGO.length())));
+        }
+        return sb.toString();
+    }
+
+    /** Forma canónica de un código tecleado: sin espacios ni guiones, en grupos de 5. */
+    public static String normalizarCodigoRecuperacion(String codigo) {
+        String limpio = codigo.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < limpio.length(); i++) {
+            if (i > 0 && i % 5 == 0) sb.append('-');
+            sb.append(limpio.charAt(i));
+        }
+        return sb.toString();
+    }
+
+    /** AAD del blob de recuperación: lo ata a SU cuenta (antes era recovery|0|0 para todas). */
+    public static byte[] aadRecuperacion(String email) {
+        return construirAAD("recovery", normalizarEmail(email), 0);
+    }
+
+    /** Envuelve MK con el código, atada al correo. El código se normaliza aquí. */
+    public static String envolverRecuperacion(String codigo, byte[] mk, String email, byte[] nonce)
+            throws Exception {
+        byte[] rk = claveDeRecuperacion(normalizarCodigoRecuperacion(codigo));
+        try {
+            return cifrar(rk, mk, aadRecuperacion(email), nonce);
+        } finally {
+            limpiar(rk);
+        }
+    }
+
+    /** Abre el blob de recuperación; acepta también el formato anterior a la v2.2.0. */
+    public static byte[] abrirRecuperacion(String codigo, String blob, String email)
+            throws Exception {
+        byte[] rk = claveDeRecuperacion(normalizarCodigoRecuperacion(codigo));
+        try {
+            try {
+                return descifrar(rk, blob, aadRecuperacion(email));
+            } catch (Exception e) {
+                return descifrar(rk, blob, construirAAD("recovery", 0, 0));
+            }
+        } finally {
+            limpiar(rk);
+        }
     }
 
     // ── Higiene ─────────────────────────────────────────────────────────────

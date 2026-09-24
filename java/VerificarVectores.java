@@ -93,6 +93,66 @@ public class VerificarVectores {
         anotar("rsa_ida_y_vuelta", java.util.Arrays.equals(deVuelta, vk),
                "(clave recuperada)", "(igual a la original)");
 
+        // ── v2.2.0 ──────────────────────────────────────────────────────────
+        comprobar("mk_pbkdf2_desde_nfd", B64.encodeToString(
+                PassrodCripto.derivarMK(entradas.get("password_nfd").toCharArray(), email)));
+        comprobar("email_con_i_normalizado",
+                PassrodCripto.normalizarEmail(entradas.get("email_con_i_nfd")));
+        comprobar("salt_email_con_i", B64.encodeToString(
+                PassrodCripto.saltDesdeEmail(entradas.get("email_con_i_nfd"))));
+        byte[] pubSpki = DEB64.decode(entradas.get("rsa_publica_spki_b64"));
+        comprobar("huella_publica", PassrodCripto.huella(pubSpki));
+        String envueltaRef = entradas.get("wrap_asimetrico_b64");
+        comprobar("mensaje_envoltura",
+                B64.encodeToString(PassrodCripto.mensajeEnvoltura(7, 12, envueltaRef)));
+        comprobar("verificar_firma_envoltura", PassrodCripto.verificarEnvoltura(pubSpki, 7, 12,
+                envueltaRef, entradas.get("firma_envoltura_b64")) ? "valida" : "invalida");
+        comprobar("firma_con_otro_destinatario", PassrodCripto.verificarEnvoltura(pubSpki, 7, 13,
+                envueltaRef, entradas.get("firma_envoltura_b64")) ? "valida" : "invalida");
+        String rechaza = "NO rechaza";
+        try {
+            PassrodCripto.envolverParaUsuario(DEB64.decode(entradas.get("rsa_publica_1024_spki_b64")), vk);
+        } catch (Exception e) {
+            rechaza = "rechaza";
+        }
+        comprobar("rechazar_rsa_1024", rechaza);
+        comprobar("codigo_normalizado",
+                PassrodCripto.normalizarCodigoRecuperacion(entradas.get("codigo_tecleado")));
+        comprobar("aad_recuperacion", B64.encodeToString(PassrodCripto.aadRecuperacion(email)));
+        comprobar("recovery_blob_atado", PassrodCripto.envolverRecuperacion(
+                entradas.get("codigo_tecleado"), mk, email, nonce));
+
+        String miFirma = PassrodCripto.firmarEnvoltura(privPkcs8, 7, 12, envueltaRef);
+        boolean buena = PassrodCripto.verificarEnvoltura(pubSpki, 7, 12, envueltaRef, miFirma);
+        boolean otra = PassrodCripto.verificarEnvoltura(pubSpki, 8, 12, envueltaRef, miFirma);
+        anotar("firma_propia_ida_y_vuelta", buena && !otra, buena + "/" + otra, "true/false");
+
+        byte[] atadoAbierto = PassrodCripto.abrirRecuperacion(entradas.get("codigo_tecleado"),
+                esperado.get("recovery_blob_atado"), email);
+        byte[] rkCanon = PassrodCripto.claveDeRecuperacion(
+                PassrodCripto.normalizarCodigoRecuperacion(entradas.get("codigo_tecleado")));
+        String blobAntiguo = PassrodCripto.cifrar(rkCanon, mk,
+                PassrodCripto.construirAAD("recovery", 0, 0), PassrodCripto.nuevoNonce());
+        byte[] antiguoAbierto = PassrodCripto.abrirRecuperacion(
+                entradas.get("codigo_tecleado"), blobAntiguo, email);
+        String otroCorreo = "abre";
+        try {
+            PassrodCripto.abrirRecuperacion(entradas.get("codigo_tecleado"),
+                    esperado.get("recovery_blob_atado"), "otra@ejemplo.ec");
+        } catch (Exception e) {
+            otroCorreo = "no abre";
+        }
+        anotar("recuperacion_atada_y_antigua", java.util.Arrays.equals(atadoAbierto, mk)
+                && java.util.Arrays.equals(antiguoAbierto, mk) && otroCorreo.equals("no abre"),
+                otroCorreo, "no abre");
+
+        boolean formato = true;
+        for (int i = 0; i < 2000; i++) {
+            if (!PassrodCripto.nuevoCodigoRecuperacion().matches("([A-Z2-9]{5}-){4}[A-Z2-9]{5}")
+                    || PassrodCripto.nuevoCodigoRecuperacion().matches(".*[ILO01].*")) formato = false;
+        }
+        anotar("generador_de_codigos", formato, String.valueOf(formato), "true");
+
         // la AAD debe atar el blob a su ubicación
         boolean atado = false;
         try {
@@ -163,7 +223,9 @@ public class VerificarVectores {
         for (String clave : new String[]{"password", "email", "email_normalizado",
                                          "nonce_hex", "clave_boveda_hex", "codigo_recuperacion",
                                          "rsa_publica_spki_b64", "rsa_privada_pkcs8_b64",
-                                         "wrap_asimetrico_b64"}) {
+                                         "wrap_asimetrico_b64", "password_nfd", "email_con_i_nfd",
+                                         "firma_envoltura_b64", "rsa_publica_1024_spki_b64",
+                                         "codigo_tecleado"}) {
             int p = bloque.indexOf("\"" + clave + "\"");
             if (p >= 0) entradas.put(clave, valorTras(bloque, p));
         }
