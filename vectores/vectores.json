@@ -26,14 +26,15 @@
     "rsa_publica_spki_b64": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlIzKWTf6FKhrKSCSRnmYb3mV2Sy+j0dR8hWoZRIyfIrWL9KH6jPqz/AQuQK4Rg1XG1JznhPUKLINOk1LeqdwYnijoTqNoIh/+USHyPe0lljuB+p9JrudAuqeKajtpc2a5Vtzuc60BYYes3NPER5c/QmuysL3bT1iNjYnorooVyHzEo2IaFTmqUat1jSr1whWoaGn4OPYAS+OJ9AkFZBw5/UWU6we77M83XONqDlnafkez2IXaLS7bv97EG7rc1DihKrYT5Dkz3AfIc4J+UsYg9uB5jbtRutlMsrP7vdRBEU5YTpvF+f3FELavweNE/z06Vbl0qCJ3b7Em2aAr4s7wwIDAQAB",
     "rsa_privada_pkcs8_b64": "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCUjMpZN/oUqGspIJJGeZhveZXZLL6PR1HyFahlEjJ8itYv0ofqM+rP8BC5ArhGDVcbUnOeE9Qosg06TUt6p3BieKOhOo2giH/5RIfI97SWWO4H6n0mu50C6p4pqO2lzZrlW3O5zrQFhh6zc08RHlz9Ca7KwvdtPWI2NieiuihXIfMSjYhoVOapRq3WNKvXCFahoafg49gBL44n0CQVkHDn9RZTrB7vszzdc42oOWdp+R7PYhdotLtu/3sQbutzUOKEqthPkOTPcB8hzgn5SxiD24HmNu1G62Uyys/u91EERTlhOm8X5/cUQtq/B40T/PTpVuXSoIndvsSbZoCvizvDAgMBAAECggEACIeTlyFzWBwsanZ9rWWOI2IzpUeAFVh38+B/e1I2Yg54M4pVzR3KeDBBAiH7xpqGxvhX9L80Au1VxYjhX/tdJP3DDvFHsGyRfAJpSCHFA2pyPH0f4UBCbYPM0hzYHr4snqWH3fANSAgz9qhL0ylPYJK5HbQXffTrtYdQ8uEhZpEIIwt5SZp3S3majP9olvonGKPQhmkRXDlCgfvlIV+FNTbk5+L9FdwKTo/ABYCj+Bij35zIYVaLmgoJUTf5Mgmek3sdWp9WDYTZ38IaodWb4xFIGw6MWQ57O6Xiza9b77zQT2HwyxWYFk6+eNKlhxSatpSfsbk8vRlP5+V/XlU83QKBgQDJ9reWVLWWdOPl1JoQaLtqdyqwMq5B/D3UWcHvgJv6C3SSeQFRYxFDFb8EdSCTbeCckOFmoUWf5HMf8mPSE67YPsK7rWvioLB6Bfxy/0xI35nvCv8/ofwUw+sGF09084QcYgFzlW/0wvSEmz8w657753QKVsDwlWLOjIFnH3ZQZwKBgQC8S45HNxjYY6JpU5jMZUZhv+XM+gbbCO4taMzV9/J074ibdLU0IPepg01w9YOuGvgG10CcsUBxg9t+ZwiqZa+ETm5xSitgdkOPvqxWIk5O2EhL+wQEL29k5DePP+PjLrqH1W432uF94+WXQkkso1/73xhkegHdKbkZH3i3NCHwRQKBgB0c0lP6O/7HNL7Bib/JyRJMwTuK4rGiUatVkO4cRN+jXRdsF/OKa0eXT+StmZeG5DTNcaBgqO+md63oO9lhevey/FEfa4jMjwPX7w8InA95I/BgTnD2waagozVKkOqT27xXqEvoA65tl9+xnUdI/67iK0j+PmuvrQGHIXQjBeQLAoGAICfnDFJkc8/QFJyqI33IHzleTTsFoLJNuoODN6c4SK//bEzqBRT8Nn6t4vSKoFkKsmBgMGI01y3ldhiyaicjajzar44zCi4oK4wscik5pk1ZS2B6txxCscAnnNcUW9/HCxtvzyoaCB27P7GaPX1JDwJyb/ZGCzbs3VV6kA7fHOECgYEAijOjDkU/Hd2j0exL/NAzyMV+L5MlU4CU5vFOa7WptRpxbY1z/Xj7CfGeJMIqBPaMOJjOb82sepEr2Jp7nOZEe+UZm/SX+aodXbWwzOnA6Lb70ujLSvBaINEAMP6bF/JCripFQQGu17uCrX3RUOt3ZsiFa8uSRoCplKvFqPqBDYQ=",
     "_aviso_rsa": "Par de claves de PRUEBA. Sirve para verificar implementaciones; nunca debe usarse en produccion.",
-    "wrap_asimetrico_b64": "Wr41uQBcqxQHW9/Lnf6tL1DNes9B+miYYWmXs06z74Zi713JkAmc8KzvTP29uiKamaWTeNl1VXtC9RsklN4ktwziut2fKK6ja8bnyctn3YHHe5HfI7WoGZeo/Rq+fet3PeeSFqvZNgWS5zvqvOFruVLXU3hgopd9nHgLSjY8a94SMbf3sRDHcbBcJ7sQUOzK9xXibtBpaqXd026w9gbxynK9yDroiqEwhWKFQZQ8j2XEswJXm0fSzqCGdyN1uYUAg82wNlVy+6ppicT0yD2y2t/9SU+gh0Qc+JDmFfRSBdjv+Ro28a3/ZYHME4G8Kc/ckuAjMFI18eOLgec19TGnUw==",
+    "wrap_asimetrico_b64": "Rzk2qcuD0PRQ/heMu593GSMxicIYZipdA7OFTBkxwOTBsCcCqKEzkai+y/0//35zUr2ha7RibEanNixziCy5TIQIBENFfqm3uukYJaAjuEoi4Za0ZaW55x6sxnxP22SrFYHVzNJ5C1Y8cgpbE1jFSvZ9WfVoroRCelzDf/kE2++MCgdxN4+2b+j745CULIFbqDdoRnwrndIlzYX2g5G76KEhA0NgRJGPP2ftEs06tQZQFYgOMFCv9xHuFjvOtcE3oxHRVV2FF5EMoBWWMTYqkE3yx3BuRMlRBcbPmENj9LPGvogMgAOhYwCaiAZTz9QMk+1vC6PWpGGRXux/N0hZFA==",
     "password_nfd": "Contraseña-Maestra-2026!",
     "email_con_i_nfd": "  IVÁN.DÍAZ@Ejemplo.EC ",
-    "firma_envoltura_b64": "Ui/Sxuv5NUoEGSDRZ9CUfd1yK7kqfaEcDpPXgFQl+AJdS3QIFSx2oDgxyjY+5KUPeNmsxzJULPK76y5jOjm9+70fGIjnJ3cxMEPF4gdZ1Chr8jh9UIhGS5XjJnd67B+JExhMndmknDxOYl/TOXgw+kfE7PezwclTJNgf2f3o9QktTJUdkE0f+Rbqwqn3PdMMwafS9TA+SzPK9khduPbMXlnCqEMn8eI9+QDwwShLQbGNIVhRhr4a9FSTV9tIXaainjrOToVldOq9F9MhRoJit+q5PNOKx5uJ87qSJ3jqeCPrKR39lA0xfU6zxu+Ap3luVJiQBokWpggN7oVewxc23A==",
+    "firma_envoltura_b64": "N+NnRsBx0A/AZ6wE5X1GZyVnYMN+uGTGDOGydjYJY+TXdKIX2ON0hgTRB3rkWohYoeN9M+qMYjH2NfcIrQBC9Dk7Gp5wY+yrsKJ3BrUxHYP1d+4WYnOiNxb/dS7+dSRK7tgFk5Pp1CbFwVVqIlcy2JQxkCxbsePgCJCAXBjpNu/WNr0AfepUu/AdmxxdkHU3vBdpJJ21xBV5Ad+5wfA8t3y53kOvyCZKL0M0uHzL5vJkKWL96gYN/ebkvBYUzUNG5cQXWWR2LmOHGqyrzeZWcqic7DIJwWgcCdgwpIhc4LyIETFvLUWBFR2JXcIdihjS2+5QpT1fmmd+cEFIEQP82A==",
     "firma_envoltura_boveda": 7,
     "firma_envoltura_destinatario": 12,
-    "rsa_publica_1024_spki_b64": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCslMStdwkFKTQ4ps7RluH/vHWxDFPr74nkSbdcB277sE5HQZZ4bjdWXhUa2mccuorUWlyKuYBZQ5kjXRWvud9RmgyGBLEUD1CNiLxGL+V9PixAbQLp8Y/V211lmiPjICBVPw491ODq0JbFl40uGjUNsDt90o5rgdV8Bw6q7sO7tQIDAQAB",
-    "codigo_tecleado": "abcde fghjk-mnpqr  stuvw xyz23"
+    "rsa_publica_1024_spki_b64": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCv5x9DA+eUv04MoIHDVISJ3mdas3xE7+3oKViInlIaKNjoSpqkvmWSYTy/soeE2YNdcxvJL5zbM/7NNPZFx8UBMmUPFAJ3fd8yQrzqMv7krnYuTTuid8PxNkA80ZnbJfpOESgvkjKF4V1bu7TeGy9zUjx4bTpt4EdDXpH/rp+DoQIDAQAB",
+    "codigo_tecleado": "abcde fghjk-mnpqr  stuvw xyz23",
+    "clave_organizacion_hex": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
   },
   "casos": [
     {
@@ -143,7 +144,7 @@
     },
     {
       "nombre": "mensaje_envoltura",
-      "esperado": "cGFzc3JvZC52Mnxjb21wYXJ0aXJ8N3wxMnxXcjQxdVFCY3F4UUhXOS9MbmY2dEwxRE5lczlCK21pWVlXbVhzMDZ6NzRaaTcxM0prQW1jOEt6dlRQMjl1aUthbWFXVGVObDFWWHRDOVJza2xONGt0d3ppdXQyZktLNmphOGJueWN0bjNZSEhlNUhmSTdXb0daZW8vUnErZmV0M1BlZVNGcXZaTmdXUzV6dnF2T0ZydVZMWFUzaGdvcGQ5bkhnTFNqWThhOTRTTWJmM3NSREhjYkJjSjdzUVVPeks5eFhpYnRCcGFxWGQwMjZ3OWdieHluSzl5RHJvaXFFd2hXS0ZRWlE4ajJYRXN3SlhtMGZTenFDR2R5TjF1WVVBZzgyd05sVnkrNnBwaWNUMHlEMnkydC85U1UrZ2gwUWMrSkRtRmZSU0JkanYrUm8yOGEzL1pZSE1FNEc4S2MvY2t1QWpNRkkxOGVPTGdlYzE5VEduVXc9PQ==",
+      "esperado": "cGFzc3JvZC52Mnxjb21wYXJ0aXJ8N3wxMnxSemsycWN1RDBQUlEvaGVNdTU5M0dTTXhpY0lZWmlwZEE3T0ZUQmt4d09UQnNDY0NxS0V6a2FpK3kvMC8vMzV6VXIyaGE3UmliRWFuTml4emlDeTVUSVFJQkVORmZxbTN1dWtZSmFBanVFb2k0WmEwWmFXNTV4NnN4bnhQMjJTckZZSFZ6Tko1QzFZOGNncGJFMWpGU3ZaOVdmVm9yb1JDZWx6RGYva0UyKytNQ2dkeE40KzJiK2o3NDVDVUxJRmJxRGRvUm53cm5kSWx6WVgyZzVHNzZLRWhBME5nUkpHUFAyZnRFczA2dFFaUUZZZ09NRkN2OXhIdUZqdk90Y0Uzb3hIUlZWMkZGNUVNb0JXV01UWXFrRTN5eDNCdVJNbFJCY2JQbUVOajlMUEd2b2dNZ0FPaFl3Q2FpQVpUejlRTWsrMXZDNlBXcEdHUlh1eC9OMGhaRkE9PQ==",
       "nota": "passrod.v2|compartir|7|12|<clave_envuelta en base64>"
     },
     {
@@ -175,6 +176,41 @@
       "nombre": "recovery_blob_atado",
       "esperado": "AgEAAQIDBAUGBwgJCgsr0XtPZa3HQsu3ztATpFa06ybGyAMEr6ZPxRBoEaFVmAgJZczbtTehQqaMCmkX7MQ=",
       "nota": "MK envuelta con la clave del codigo canonico y AAD atada al correo"
+    },
+    {
+      "nombre": "id_publica_org",
+      "esperado": "b65add1f068dcb68b2ca7181f104c010e982aca932919b6e80fea3284f68c563",
+      "nota": "SHA-256 completo del SPKI de la organizacion, en hex"
+    },
+    {
+      "nombre": "aad_org_privada",
+      "esperado": "cGFzc3JvZC52MnxvcmdfcHJpdmFkYXxiNjVhZGQxZjA2OGRjYjY4YjJjYTcxODFmMTA0YzAxMGU5ODJhY2E5MzI5MTliNmU4MGZlYTMyODRmNjhjNTYzfDA=",
+      "nota": "passrod.v2|org_privada|<id_publica_org>|0"
+    },
+    {
+      "nombre": "material_org",
+      "esperado": "AgEAAQIDBAUGBwgJCgt9IynYPMK+/AMyxMQ8b9P/h0rWeljsd5D4i4oqAIPFGz8+9mLcU8aiLwCbneaGFIwuZRanzzpYVRWysiREq+D5yN5ze8fwdLgVvWoDxiffNzfvqTeF0W5HzVRpATUgqyHWPZ7M3SoX1RCG3m44nx0rkWb+ic8SrL06F018tS3WyPsaPoAyD3PXff+Dk8SHQmNgwwa7a6CrL2sHutaGHkjsZIMy+aKtHr/yYFOE5ljLBOacQmb3aFATihNSHN1bdBx9pAQta4jzyvvxpXttqKdcbZoupAHPQ0A+kZEd6gO85L27fxa96SpMSAZOYX3epG36HpwTMc3WgeRLB1+KW3IAzdv4sgolPDnj7GhHsQkd9IMpo4O2u3l7Q9koflQPrbLQlnr0IxIHI7794xSk5Z+ARXTU4W7T/9TCddlVEw5AwSsKbu30bCoTG2JDHmhPeIawwRmnYUe4mKOln0SMuEcxdKATb6KvH1G8GFrHoLIXlY3sfSWIrmC8izCNliujyGVnYnXY5UqmLE0ijcLsj1sIzaMoeNu5RmB9UC7HjqOXpIqaRwtSsU9uRAbJlRybcfJLroMDS2Q0XGbWh4UMkgsGIazcdfSgwdM/xRTQjWgPOFNADFOsqs7KnWELdCVODUj+i9Bk57V2cnPC7N0IzLP5qvrDztZ5FSzj7+RV1ooqaShAh8bQJi0zmTTJ3tojWo/8IHgTvcHXC4GAfaAySbFi1KNLlzX6PuuIDyHNlu2Ed7DpKMdfHZST0CyB4bMk3ntaniWK+A/2OWxEyzkWogfETYRK0Tw0cLbD88o6t1UFEuRrH/iyd//FJWM+KL6n83fnZ9+0jeAPpZ8A5umU0VUjaSEMGHnCwExv4WpW7DdqN5pbgXuAXUH/4JFVZYmfrFciYEDOOpM/vAJIQGtYXSvv61dywCR9VQbCsH8BL/i2ZY/fQfrdx2k1jilLW2CPys9zS5Gmurgk1y7RrXfeFIAWpLNY2BZ/wNNahSb5naFGotDT6IgJ/U8+3BxOOeHQ3l0z92dKNYrss7sXUCKOL2M3MiGwTUjtQCzFRG8gGVoHw8Ypz7vplMsMqePtDKC8pK8Ya+rkjUeQ0XfqH7jKjV7WlEM3uTQyeOPqzQ2dNGULU7Q8Hp1M98hCeU35IqwMKdfeZrdHbvosml1ylO4nXwsnW8aWJQxwbxMknEhnosAPbwXfUHiGOA2C/0COEsuH4Ewo27K5Jf05iC/0JaglpvW+Dgq8Anhvt1RL1z+nfZzZnv9CNoCKADwSBDR3DW5FJgfT1XdrAfW/EG1dekF6iVVgF2GIItZ06Dm7hHmsODNPnTrTQNejGu4uYiiyOfZBj5AZY1hr/+DTK6/AMG5wXcMiQbTDD/ZXZvhutpndQyj6zO998D6Axq6qCIQ9ibKuPgXsF/4RZ5dHMKK8909Hf3NEf3K1xsd2xYYadAZA+6zbn5Cbre1T9OYuPIWrceN3n2bixQE9F4gYIq3LfRf15/Kp74TeIi9Q1T8Bi2g2NF+V8MYzyxuVdskKJEHedrOuYJ3S3UhNXVjR+3hRI0q6UCyLZqKjhGqXbzPxHIssiAESsiZ+2i+pgVk3W3xrM+H+lVNwioikJLD3RlmiiH/d3DLCJ9UQ2kcIWijxhH0o1bXeH0o=",
+      "nota": "la privada de la organizacion cifrada con OK"
+    },
+    {
+      "nombre": "clave_org_sim",
+      "esperado": "AgEAAQIDBAUGBwgJCgvNJHqTCGhl2sMaptxBQ26zQnZskAwyQntNJdJ1hdl0hi3uFU2hvpHVSoJxU43Qjws=",
+      "nota": "OK envuelta con la SK de un administrador"
+    },
+    {
+      "nombre": "recovery_org",
+      "esperado": "AgEAAQIDBAUGBwgJCgsbNICdYEEAM33jd0CZkJM9teEoHUBX1VSPu0RCQ0w6DCdJldtWhr/BxIpxxb7vpZE=",
+      "nota": "OK cifrada con el codigo en papel de la organizacion (canonico)"
+    },
+    {
+      "nombre": "prueba_org",
+      "esperado": "ddd11949aa9be52cf27947cad04dbc0b10c1e7fc4beb0c2249843a6f7b11c4d6",
+      "nota": "HKDF(OK, passrod.v2.org.prueba) en hex: el servidor guarda su SHA-256"
+    },
+    {
+      "nombre": "mensaje_firma_clave_org",
+      "esperado": "cGFzc3JvZC52Mnxjb21wYXJ0aXJ8b3JnLTV8MTJ8UnprMnFjdUQwUFJRL2hlTXU1OTNHU014aWNJWVppcGRBN09GVEJreHdPVEJzQ2NDcUtFemthaSt5LzAvLzM1elVyMmhhN1JpYkVhbk5peHppQ3k1VElRSUJFTkZmcW0zdXVrWUphQWp1RW9pNFphMFphVzU1eDZzeG54UDIyU3JGWUhWek5KNUMxWThjZ3BiRTFqRlN2WjlXZlZvcm9SQ2VsekRmL2tFMisrTUNnZHhONCsyYitqNzQ1Q1VMSUZicURkb1Jud3JuZElsellYMmc1Rzc2S0VoQTBOZ1JKR1BQMmZ0RXMwNnRRWlFGWWdPTUZDdjl4SHVGanZPdGNFM294SFJWVjJGRjVFTW9CV1dNVFlxa0UzeXgzQnVSTWxSQmNiUG1FTmo5TFBHdm9nTWdBT2hZd0NhaUFaVHo5UU1rKzF2QzZQV3BHR1JYdXgvTjBoWkZBPT0=",
+      "nota": "la firma de OK para otro admin reutiliza la de compartir con id 'org-<id>'"
     },
     {
       "nombre": "aad_incorrecta_debe_fallar",

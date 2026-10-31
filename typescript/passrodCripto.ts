@@ -55,6 +55,7 @@ const PREFIJO_AAD = 'passrod.v2|';
 const INFO_ENC = 'passrod.v2.enc';
 const INFO_AUTH = 'passrod.v2.auth';
 const INFO_RECOVERY = 'passrod.v2.recovery';
+const INFO_ORG_PRUEBA = 'passrod.v2.org.prueba';
 
 const utf8 = new TextEncoder();
 
@@ -522,6 +523,83 @@ export async function recuperarMK(codigo: string, blob: string): Promise<Uint8Ar
   limpiar(rk);
   return mk;
 }
+
+// ── Organizaciones: PassRod Enterprise (v2.4.0) ─────────────────────────────
+//
+// La empresa recupera SUS bóvedas, no la cuenta del empleado. Cada bóveda de
+// organización lleva una envoltura más con la PÚBLICA de la organización
+// (`envolverParaUsuario`); las personales no, y por eso nadie más las abre.
+//
+// La organización tiene un par RSA y una clave simétrica OK:
+//   - la privada viaja cifrada con OK                (cifrarMaterialOrg)
+//   - OK viaja envuelta para cada administrador      (envolverClaveOrg, o
+//     `envolverParaUsuario` + `firmarEnvoltura(…, idFirmaOrg(id), …)` para
+//     dársela a otro admin, que la re-envuelve con su SK)
+//   - OK viaja cifrada con el código en papel        (envolverRecuperacionOrg)
+//
+// Todo se ata a la huella COMPLETA de la pública de la organización: si el
+// servidor entregara otra pública, ni la privada ni OK abrirían. Así un admin
+// no envuelve nada para una clave que no es la de su empresa sin enterarse.
+
+/** Clave de organización nueva. Aleatoria: nunca derivarla de nada. */
+export const nuevaClaveOrganizacion = () => obtenerCripto().getRandomValues(new Uint8Array(32));
+
+/** SHA-256 completo de la pública de la organización, en hex. */
+export async function idPublicaOrg(publicaSpki: Uint8Array): Promise<string> {
+  const h = new Uint8Array(await obtenerCripto().subtle.digest('SHA-256', publicaSpki));
+  return [...h].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function cifrarMaterialOrg(ok: Uint8Array, privadaPkcs8: Uint8Array,
+                                        publicaSpki: Uint8Array, nonce?: Uint8Array) {
+  return cifrar(ok, privadaPkcs8, construirAAD('org_privada', await idPublicaOrg(publicaSpki), 0), nonce);
+}
+
+export async function abrirMaterialOrg(ok: Uint8Array, blob: string, publicaSpki: Uint8Array) {
+  return descifrar(ok, blob, construirAAD('org_privada', await idPublicaOrg(publicaSpki), 0));
+}
+
+/** OK envuelta con la SK de un administrador: la que él mismo guarda. */
+export async function envolverClaveOrg(sk: Uint8Array, ok: Uint8Array,
+                                       publicaOrg: Uint8Array, nonce?: Uint8Array) {
+  return cifrar(sk, ok, construirAAD('clave_org', await idPublicaOrg(publicaOrg), 0), nonce);
+}
+
+export async function abrirClaveOrg(sk: Uint8Array, envuelta: string, publicaOrg: Uint8Array) {
+  return descifrar(sk, envuelta, construirAAD('clave_org', await idPublicaOrg(publicaOrg), 0));
+}
+
+/** OK cifrada con el código en papel de la organización (se normaliza aquí). */
+export async function envolverRecuperacionOrg(codigo: string, ok: Uint8Array,
+                                              publicaOrg: Uint8Array, nonce?: Uint8Array) {
+  const rk = await claveDeRecuperacion(normalizarCodigoRecuperacion(codigo));
+  try {
+    return await cifrar(rk, ok, construirAAD('recovery_org', await idPublicaOrg(publicaOrg), 0), nonce);
+  } finally {
+    limpiar(rk);
+  }
+}
+
+export async function abrirRecuperacionOrg(codigo: string, blob: string, publicaOrg: Uint8Array) {
+  const rk = await claveDeRecuperacion(normalizarCodigoRecuperacion(codigo));
+  try {
+    return await descifrar(rk, blob, construirAAD('recovery_org', await idPublicaOrg(publicaOrg), 0));
+  } finally {
+    limpiar(rk);
+  }
+}
+
+/**
+ * Prueba de que se abrió OK, sin revelarla. El servidor guarda su SHA-256 al
+ * crear la organización y la compara al restaurar con el código en papel.
+ */
+export async function pruebaOrg(ok: Uint8Array): Promise<string> {
+  const p = await hkdf(ok, INFO_ORG_PRUEBA);
+  return [...p].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** El «id de bóveda» con el que se firma OK al dársela a otro administrador. */
+export const idFirmaOrg = (idOrganizacion: string | number) => `org-${idOrganizacion}`;
 
 // Doble factor (TOTP). Vive aparte porque no toca las claves de PassRod.
 export * from './totp.js';

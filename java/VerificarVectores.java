@@ -199,6 +199,35 @@ public class VerificarVectores {
         anotar("authHash con argon2id = base64(authkey_argon2id)",
                 PassrodCripto.authHash(password.toCharArray(), email, a2).equals(esperado.get("authkey_argon2id")), "-", "-");
 
+        // ── v2.4.0: organizaciones ──────────────────────────────────────────
+        byte[] okOrg = deHex(entradas.get("clave_organizacion_hex"));
+        comprobar("id_publica_org", PassrodCripto.idPublicaOrg(pubSpki));
+        comprobar("material_org", PassrodCripto.cifrarMaterialOrg(okOrg, privPkcs8, pubSpki, nonce));
+        comprobar("clave_org_sim", PassrodCripto.envolverClaveOrg(sk, okOrg, pubSpki, nonce));
+        comprobar("recovery_org", PassrodCripto.envolverRecuperacionOrg(
+                entradas.get("codigo_tecleado"), okOrg, pubSpki, nonce));
+        comprobar("prueba_org", PassrodCripto.pruebaOrg(okOrg));
+        comprobar("mensaje_firma_clave_org", B64.encodeToString(PassrodCripto.mensajeEnvoltura(
+                PassrodCripto.idFirmaOrg(5), 12, envueltaRef)));
+        byte[] pub1024 = DEB64.decode(entradas.get("rsa_publica_1024_spki_b64"));
+        String matOrg = PassrodCripto.cifrarMaterialOrg(okOrg, privPkcs8, pubSpki, PassrodCripto.nuevoNonce());
+        String cambiada = "abre";
+        try {
+            PassrodCripto.abrirMaterialOrg(okOrg, matOrg, pub1024);
+        } catch (Exception e) {
+            cambiada = "no abre";
+        }
+        anotar("org: la privada abre con su pública y NO con otra",
+                java.util.Arrays.equals(PassrodCripto.abrirMaterialOrg(okOrg, matOrg, pubSpki), privPkcs8)
+                && cambiada.equals("no abre"), cambiada, "no abre");
+        String recOrg = PassrodCripto.envolverRecuperacionOrg("abcde-fghjk-mnpqr-stuvw-xyz23", okOrg, pubSpki,
+                PassrodCripto.nuevoNonce());
+        anotar("org: el código en papel abre OK, tecleado de cualquier forma",
+                java.util.Arrays.equals(PassrodCripto.abrirRecuperacionOrg(
+                        " ABCDE FGHJK MNPQR STUVW XYZ23 ", recOrg, pubSpki), okOrg), "-", "-");
+        anotar("org: OK abre con la SK del admin", java.util.Arrays.equals(PassrodCripto.abrirClaveOrg(sk,
+                PassrodCripto.envolverClaveOrg(sk, okOrg, pubSpki, PassrodCripto.nuevoNonce()), pubSpki), okOrg), "-", "-");
+
         // la AAD debe atar el blob a su ubicación
         boolean atado = false;
         try {
@@ -271,7 +300,7 @@ public class VerificarVectores {
                                          "rsa_publica_spki_b64", "rsa_privada_pkcs8_b64",
                                          "wrap_asimetrico_b64", "password_nfd", "email_con_i_nfd",
                                          "firma_envoltura_b64", "rsa_publica_1024_spki_b64",
-                                         "codigo_tecleado"}) {
+                                         "codigo_tecleado", "clave_organizacion_hex"}) {
             int p = bloque.indexOf("\"" + clave + "\"");
             if (p >= 0) entradas.put(clave, valorTras(bloque, p));
         }

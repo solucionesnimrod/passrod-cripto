@@ -46,6 +46,17 @@ import {
   kdfDesdeServidor,
   kdfParaServidor,
   authHash,
+  deBase64,
+  nuevaClaveOrganizacion,
+  idPublicaOrg,
+  cifrarMaterialOrg,
+  abrirMaterialOrg,
+  envolverClaveOrg,
+  abrirClaveOrg,
+  envolverRecuperacionOrg,
+  abrirRecuperacionOrg,
+  pruebaOrg,
+  idFirmaOrg,
 } from '../dist/passrodCripto.js';
 
 const AQUI = dirname(fileURLToPath(import.meta.url));
@@ -232,6 +243,39 @@ resultados.push({ nombre: 'kdf ida y vuelta con el servidor',
   obtenido: JSON.stringify(ida), esperado: 'ida y vuelta, y rechazo de 1 iteración' });
 resultados.push({ nombre: 'authHash con argon2id = base64(authkey_argon2id)',
   ok: (await authHash(E.password, E.email, A2)) === esperado['authkey_argon2id'], obtenido: '-', esperado: '-' });
+
+// ── v2.4.0: organizaciones ──────────────────────────────────────────────────
+{
+  const ok = deHex(E.clave_organizacion_hex);
+  const pubOrg = deBase64(E.rsa_publica_spki_b64);
+  const privOrg = deBase64(E.rsa_privada_pkcs8_b64);
+  const nonceO = deHex(E.nonce_hex);
+  comprobar('id_publica_org', await idPublicaOrg(pubOrg));
+  comprobar('material_org', await cifrarMaterialOrg(ok, privOrg, pubOrg, nonceO));
+  comprobar('clave_org_sim', await envolverClaveOrg(sk, ok, pubOrg, nonceO));
+  comprobar('recovery_org', await envolverRecuperacionOrg(E.codigo_tecleado, ok, pubOrg, nonceO));
+  comprobar('prueba_org', await pruebaOrg(ok));
+  comprobar('mensaje_firma_clave_org', b64(mensajeEnvoltura(idFirmaOrg(5), 12, E.wrap_asimetrico_b64)));
+  const abre = async (f) => { try { await f(); return true; } catch { return false; } };
+  const mat = await cifrarMaterialOrg(ok, privOrg, pubOrg);
+  const otraPub = deBase64(E.rsa_publica_1024_spki_b64);
+  resultados.push({ nombre: 'org: la privada abre con su pública',
+    ok: b64(await abrirMaterialOrg(ok, mat, pubOrg)) === b64(privOrg), obtenido: '-', esperado: '-' });
+  resultados.push({ nombre: 'org: la privada NO abre si el servidor cambia la pública',
+    ok: !(await abre(() => abrirMaterialOrg(ok, mat, otraPub))), obtenido: '-', esperado: 'falla' });
+  const env = await envolverClaveOrg(sk, ok, pubOrg);
+  resultados.push({ nombre: 'org: OK abre con la SK del admin',
+    ok: b64(await abrirClaveOrg(sk, env, pubOrg)) === b64(ok)
+      && !(await abre(() => abrirClaveOrg(sk, env, otraPub))), obtenido: '-', esperado: '-' });
+  const rec = await envolverRecuperacionOrg('abcde-fghjk-mnpqr-stuvw-xyz23', ok, pubOrg);
+  resultados.push({ nombre: 'org: el código en papel abre OK, tecleado de cualquier forma',
+    ok: b64(await abrirRecuperacionOrg(' ABCDE FGHJK MNPQR STUVW XYZ23 ', rec, pubOrg)) === b64(ok)
+      && !(await abre(() => abrirRecuperacionOrg('ABCDE-FGHJK-MNPQR-STUVW-XYZ24', rec, pubOrg))),
+    obtenido: '-', esperado: '-' });
+  const nueva = nuevaClaveOrganizacion();
+  resultados.push({ nombre: 'org: claves nuevas de 32 bytes y distintas',
+    ok: nueva.length === 32 && b64(nueva) !== b64(nuevaClaveOrganizacion()), obtenido: '-', esperado: '-' });
+}
 
 // la AAD debe atar el blob a su ubicación
 let atado = false;

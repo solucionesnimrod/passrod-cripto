@@ -32,6 +32,7 @@ PBKDF2_ITER = 600_000
 INFO_ENC = b"passrod.v2.enc"
 INFO_AUTH = b"passrod.v2.auth"
 INFO_RECOVERY = b"passrod.v2.recovery"
+INFO_ORG_PRUEBA = b"passrod.v2.org.prueba"
 PREFIJO_SALT = "passrod.v2|"
 PREFIJO_AAD = "passrod.v2|"
 
@@ -365,6 +366,27 @@ def construir():
          "passrod.v2|recovery|<correo normalizado>|0")
     caso("recovery_blob_atado", cifrar(rk2, mk_pbkdf2, aad_recuperacion(email), nonce),
          "MK envuelta con la clave del codigo canonico y AAD atada al correo")
+
+    # -- v2.4.0: organizaciones (PassRod Enterprise) ---------------------------
+    # La organizacion tiene su par RSA (aqui, el de pruebas) y una clave
+    # simetrica OK. Todo se ata a la HUELLA COMPLETA de su publica (SHA-256 en
+    # hex): si el servidor entregara otra publica, nada de esto abriria.
+    ok = bytes([0x5A] * 32)
+    vectores["entradas"]["clave_organizacion_hex"] = ok.hex()
+    id_pub = hashlib.sha256(pub_spki).hexdigest()
+    caso("id_publica_org", id_pub, "SHA-256 completo del SPKI de la organizacion, en hex")
+    aad_mat = aad_de("org_privada", id_pub, 0)
+    caso("aad_org_privada", b64(aad_mat), "passrod.v2|org_privada|<id_publica_org>|0")
+    caso("material_org", cifrar(ok, priv_pkcs8, aad_mat, nonce),
+         "la privada de la organizacion cifrada con OK")
+    caso("clave_org_sim", cifrar(sk, ok, aad_de("clave_org", id_pub, 0), nonce),
+         "OK envuelta con la SK de un administrador")
+    caso("recovery_org", cifrar(rk2, ok, aad_de("recovery_org", id_pub, 0), nonce),
+         "OK cifrada con el codigo en papel de la organizacion (canonico)")
+    caso("prueba_org", hkdf(ok, INFO_ORG_PRUEBA).hex(),
+         "HKDF(OK, passrod.v2.org.prueba) en hex: el servidor guarda su SHA-256")
+    caso("mensaje_firma_clave_org", b64(mensaje_envoltura("org-5", 12, b64(envuelta))),
+         "la firma de OK para otro admin reutiliza la de compartir con id 'org-<id>'")
 
     # comprobacion negativa: una AAD distinta debe hacer fallar el descifrado
     try:

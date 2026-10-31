@@ -170,6 +170,25 @@ Las cuentas antiguas pasan a Argon2id al cambiar la contraseña o recuperar la
 cuenta: son los dos momentos en que ya se rehace todo lo que depende de la
 clave maestra, incluido el código de recuperación.
 
+## Organizaciones: PassRod Enterprise (v2.4.0)
+
+```
+OK            = 32 bytes aleatorios (nuevaClaveOrganizacion)
+idPublicaOrg  = hex(SHA-256(SPKI de la organización))
+material_org  = AES-GCM(OK, privada PKCS#8, AAD org_privada|idPublicaOrg|0)
+clave_org     = AES-GCM(SK del admin, OK, AAD clave_org|idPublicaOrg|0)
+recovery_org  = AES-GCM(HKDF(código canónico), OK, AAD recovery_org|idPublicaOrg|0)
+prueba_org    = hex(HKDF(OK, "passrod.v2.org.prueba"))   — el servidor guarda su SHA-256
+```
+
+La empresa recupera **sus** bóvedas, no la cuenta del empleado: cada bóveda de
+organización lleva una envoltura más con la pública de la organización
+(`envolverParaUsuario`) y las personales no. Para dar OK a otro administrador se
+envuelve con su pública y se firma con `firmarEnvoltura(…, idFirmaOrg(id), …)`;
+él la verifica y la re-envuelve con su SK. Todo va atado a la huella completa de
+la pública de la organización: si el servidor entregara otra, ni la privada ni
+OK abrirían.
+
 ## Al tocar el esquema
 
 1. Cambiar `generar_vectores.py`, que es la referencia.

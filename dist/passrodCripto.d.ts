@@ -158,4 +158,23 @@ export declare function envolverRecuperacion(codigo: string, mk: Uint8Array, ema
 export declare function abrirRecuperacion(codigo: string, blob: string, email: string): Promise<Uint8Array>;
 export declare function envolverParaRecuperacion(codigo: string, mk: Uint8Array, nonce?: Uint8Array): Promise<string>;
 export declare function recuperarMK(codigo: string, blob: string): Promise<Uint8Array>;
+/** Clave de organización nueva. Aleatoria: nunca derivarla de nada. */
+export declare const nuevaClaveOrganizacion: () => Uint8Array<ArrayBuffer>;
+/** SHA-256 completo de la pública de la organización, en hex. */
+export declare function idPublicaOrg(publicaSpki: Uint8Array): Promise<string>;
+export declare function cifrarMaterialOrg(ok: Uint8Array, privadaPkcs8: Uint8Array, publicaSpki: Uint8Array, nonce?: Uint8Array): Promise<string>;
+export declare function abrirMaterialOrg(ok: Uint8Array, blob: string, publicaSpki: Uint8Array): Promise<Uint8Array<ArrayBufferLike>>;
+/** OK envuelta con la SK de un administrador: la que él mismo guarda. */
+export declare function envolverClaveOrg(sk: Uint8Array, ok: Uint8Array, publicaOrg: Uint8Array, nonce?: Uint8Array): Promise<string>;
+export declare function abrirClaveOrg(sk: Uint8Array, envuelta: string, publicaOrg: Uint8Array): Promise<Uint8Array<ArrayBufferLike>>;
+/** OK cifrada con el código en papel de la organización (se normaliza aquí). */
+export declare function envolverRecuperacionOrg(codigo: string, ok: Uint8Array, publicaOrg: Uint8Array, nonce?: Uint8Array): Promise<string>;
+export declare function abrirRecuperacionOrg(codigo: string, blob: string, publicaOrg: Uint8Array): Promise<Uint8Array<ArrayBufferLike>>;
+/**
+ * Prueba de que se abrió OK, sin revelarla. El servidor guarda su SHA-256 al
+ * crear la organización y la compara al restaurar con el código en papel.
+ */
+export declare function pruebaOrg(ok: Uint8Array): Promise<string>;
+/** El «id de bóveda» con el que se firma OK al dársela a otro administrador. */
+export declare const idFirmaOrg: (idOrganizacion: string | number) => string;
 export * from './totp.js';

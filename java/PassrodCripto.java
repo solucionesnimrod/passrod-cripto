@@ -39,6 +39,7 @@ public final class PassrodCripto {
     private static final String INFO_ENC = "passrod.v2.enc";
     private static final String INFO_AUTH = "passrod.v2.auth";
     private static final String INFO_RECOVERY = "passrod.v2.recovery";
+    private static final String INFO_ORG_PRUEBA = "passrod.v2.org.prueba";
 
     private static final int NONCE_BYTES = 12;
     private static final int TAG_BITS = 128;
@@ -583,6 +584,83 @@ public final class PassrodCripto {
         } finally {
             limpiar(rk);
         }
+    }
+
+    // ── Organizaciones: PassRod Enterprise (v2.4.0) ─────────────────────────
+    //
+    // La empresa recupera SUS bóvedas, no la cuenta del empleado. Cada bóveda de
+    // organización lleva una envoltura más con la pública de la organización
+    // (envolverParaUsuario); las personales no. La privada de la organización
+    // viaja cifrada con su clave simétrica OK, y OK envuelta para cada admin.
+    // Todo se ata a la huella COMPLETA de la pública: si el servidor entregara
+    // otra, nada abriría. Mismo esquema que passrodCripto.ts.
+
+    /** Clave de organización nueva. Aleatoria: nunca derivarla de nada. */
+    public static byte[] nuevaClaveOrganizacion() {
+        byte[] ok = new byte[32];
+        AZAR.nextBytes(ok);
+        return ok;
+    }
+
+    /** SHA-256 completo de la pública de la organización, en hex. */
+    public static String idPublicaOrg(byte[] publicaSpki) throws Exception {
+        return hex(MessageDigest.getInstance("SHA-256").digest(publicaSpki));
+    }
+
+    public static String cifrarMaterialOrg(byte[] ok, byte[] privadaPkcs8, byte[] publicaSpki,
+                                           byte[] nonce) throws Exception {
+        return cifrar(ok, privadaPkcs8, construirAAD("org_privada", idPublicaOrg(publicaSpki), 0), nonce);
+    }
+
+    public static byte[] abrirMaterialOrg(byte[] ok, String blob, byte[] publicaSpki) throws Exception {
+        return descifrar(ok, blob, construirAAD("org_privada", idPublicaOrg(publicaSpki), 0));
+    }
+
+    /** OK envuelta con la SK de un administrador. */
+    public static String envolverClaveOrg(byte[] sk, byte[] ok, byte[] publicaOrg, byte[] nonce)
+            throws Exception {
+        return cifrar(sk, ok, construirAAD("clave_org", idPublicaOrg(publicaOrg), 0), nonce);
+    }
+
+    public static byte[] abrirClaveOrg(byte[] sk, String envuelta, byte[] publicaOrg) throws Exception {
+        return descifrar(sk, envuelta, construirAAD("clave_org", idPublicaOrg(publicaOrg), 0));
+    }
+
+    /** OK cifrada con el código en papel de la organización (se normaliza aquí). */
+    public static String envolverRecuperacionOrg(String codigo, byte[] ok, byte[] publicaOrg,
+                                                 byte[] nonce) throws Exception {
+        byte[] rk = claveDeRecuperacion(normalizarCodigoRecuperacion(codigo));
+        try {
+            return cifrar(rk, ok, construirAAD("recovery_org", idPublicaOrg(publicaOrg), 0), nonce);
+        } finally {
+            limpiar(rk);
+        }
+    }
+
+    public static byte[] abrirRecuperacionOrg(String codigo, String blob, byte[] publicaOrg)
+            throws Exception {
+        byte[] rk = claveDeRecuperacion(normalizarCodigoRecuperacion(codigo));
+        try {
+            return descifrar(rk, blob, construirAAD("recovery_org", idPublicaOrg(publicaOrg), 0));
+        } finally {
+            limpiar(rk);
+        }
+    }
+
+    /** Prueba de que se abrió OK, sin revelarla: el servidor guarda su SHA-256. */
+    public static String pruebaOrg(byte[] ok) throws Exception {
+        return hex(hkdf(ok, INFO_ORG_PRUEBA, 32));
+    }
+
+    /** El «id de bóveda» con el que se firma OK al dársela a otro administrador. */
+    public static String idFirmaOrg(Object idOrganizacion) {
+        return "org-" + idOrganizacion;
+    }
+
+    private static String hex(byte[] datos) {
+        StringBuilder sb = new StringBuilder(datos.length * 2);
+        for (byte b : datos) sb.append(String.format("%02x", b & 0xff));
+        return sb.toString();
     }
 
     // ── Higiene ─────────────────────────────────────────────────────────────
